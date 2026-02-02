@@ -8,7 +8,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "options.html",
+    "default_popup": "options.html?mode=popup",
     "default_title": "yukonChromeExtension"
   },
   "options_page": "options.html",

@@ -1,5 +1,9 @@
 let currentWhitelist = [];
 
+// 检测运行模式
+const isPopup = new URLSearchParams(window.location.search).get('mode') === 'popup';
+if (isPopup) document.body.classList.add('is-popup');
+
 // 显示状态
 function showStatus(msg) {
     const status = document.getElementById('status');
@@ -181,9 +185,46 @@ function initCopyModule() {
     });
 }
 
+// --- 功能显示管理模块逻辑 ---
+function initSettingsModule() {
+    const configs = [
+        { id: 'visibility-speed', module: 'module-speed', key: 'speed' },
+        { id: 'visibility-proxy', module: 'module-proxy', key: 'proxy' },
+        { id: 'visibility-copy', module: 'module-copy', key: 'copy' }
+    ];
+
+    chrome.storage.sync.get({
+        visibleModules: { speed: true, proxy: true, copy: true }
+    }, (items) => {
+        const visibility = items.visibleModules;
+        
+        configs.forEach(cfg => {
+            const checkbox = document.getElementById(cfg.id);
+            const moduleEl = document.getElementById(cfg.module);
+            
+            // 设置勾选框状态
+            checkbox.checked = visibility[cfg.key];
+            
+            // 如果是 Popup 模式，应用显隐
+            if (isPopup && !visibility[cfg.key]) {
+                moduleEl.classList.add('hidden-in-popup');
+            }
+
+            // 监听变化
+            checkbox.addEventListener('change', () => {
+                visibility[cfg.key] = checkbox.checked;
+                chrome.storage.sync.set({ visibleModules: visibility }, () => {
+                    showStatus('显示配置已更新');
+                });
+            });
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initAccordion();
     initSpeedModule();
     initProxyModule();
     initCopyModule();
+    initSettingsModule();
 });

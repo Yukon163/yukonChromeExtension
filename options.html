@@ -83,6 +83,14 @@
             background: var(--accent-color);
             color: white;
         }
+
+        /* 弹窗模式下的特殊隐藏逻辑 */
+        body.is-popup #module-settings {
+            display: none !important;
+        }
+        body.is-popup .module-card.hidden-in-popup {
+            display: none !important;
+        }
         
         /* 向下箭头 (绿色框区域) */
         .arrow-icon {
@@ -322,6 +330,47 @@
                         <span class="slider"></span>
                     </label>
                 </label>
+            </div>
+        </div>
+
+        <!-- 模块 4: 功能显示管理 (仅在设置页可见) -->
+        <div class="module-card" id="module-settings">
+            <div class="module-header">
+                <div class="module-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    功能显示管理 (Popup)
+                </div>
+                <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="module-content">
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">视频倍速白名单</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="visibility-speed" checked>
+                        <span class="slider"></span>
+                    </label>
+                </label>
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">代理控制器 (Proxy)</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="visibility-proxy" checked>
+                        <span class="slider"></span>
+                    </label>
+                </label>
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">超级复制粘贴</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="visibility-copy" checked>
+                        <span class="slider"></span>
+                    </label>
+                </label>
+                <p style="font-size: 11px; color: var(--text-dim); margin-top: 10px;">* 此设置仅影响 Popup 弹窗界面的显示</p>
             </div>
         </div>
 
