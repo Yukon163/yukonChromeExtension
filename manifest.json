@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Cycani Video Speed Controller",
+  "version": "1.0",
+  "description": "个人专属浏览器助手：视频倍速与代理控制",
+  "permissions": ["activeTab", "storage", "proxy"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "options.html",
+    "default_title": "Personal Assistant"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}
