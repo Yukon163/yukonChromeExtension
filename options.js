@@ -4,11 +4,24 @@ let currentWhitelist = [];
 const isPopup = new URLSearchParams(window.location.search).get('mode') === 'popup';
 if (isPopup) document.body.classList.add('is-popup');
 
-// 显示状态
+// 显示状态 (带 3D 翻转动画)
 function showStatus(msg) {
-    const status = document.getElementById('status');
-    status.textContent = msg;
-    setTimeout(() => status.textContent = '', 2000);
+    const card = document.getElementById('footer-card');
+    const statusText = document.getElementById('status-text');
+    if (!card || !statusText) return;
+
+    statusText.textContent = msg;
+    card.classList.add('showing-status');
+
+    setTimeout(() => {
+        card.classList.remove('showing-status');
+        // 等待翻转动画完成后清空文字
+        setTimeout(() => {
+            if (!card.classList.contains('showing-status')) {
+                statusText.textContent = '';
+            }
+        }, 600);
+    }, 2000);
 }
 
 // --- 手风琴逻辑 ---
@@ -227,4 +240,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initProxyModule();
     initCopyModule();
     initSettingsModule();
+
+    // 更多设置跳转
+    const moreSettings = document.getElementById('more-settings');
+    if (moreSettings) {
+        moreSettings.addEventListener('click', (e) => {
+            e.preventDefault();
+            chrome.runtime.openOptionsPage();
+        });
+    }
 });
