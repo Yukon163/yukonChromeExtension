@@ -73,10 +73,10 @@ function initProxyModule() {
     function updateBadge(mode) {
         if (mode === 'system') {
             badge.textContent = '系统';
-            badge.classList.remove('active');
+            badge.classList.add('active');
         } else {
             badge.textContent = '直连';
-            badge.classList.add('active');
+            badge.classList.remove('active');
         }
     }
 
@@ -148,10 +148,10 @@ function initCopyModule() {
 
     function updateBadge(enabled) {
         if (enabled) {
-            badge.textContent = '已开启';
+            badge.textContent = '开启';
             badge.classList.add('active');
         } else {
-            badge.textContent = '已关闭';
+            badge.textContent = '关闭';
             badge.classList.remove('active');
         }
     }
@@ -164,7 +164,7 @@ function initCopyModule() {
     // 快捷切换状态
     badge.addEventListener('click', (e) => {
         e.stopPropagation(); // 阻止手风琴折叠
-        const newState = badge.textContent === '已关闭';
+        const newState = badge.textContent === '关闭';
         chrome.storage.sync.set({ superCopy: newState }, () => {
             toggle.checked = newState;
             updateBadge(newState);
