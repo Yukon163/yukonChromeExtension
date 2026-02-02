@@ -407,7 +407,7 @@ chrome.storage.sync.get({
             document.oncopy = nullifier;
             document.onmousedown = nullifier;
             
-            console.log('[PersonalAssistant] 超级复制模式已激活');
+            console.log('[yukonChromeExtension] 超级复制模式已激活');
         };
 
         const disable = () => {
@@ -418,7 +418,7 @@ chrome.storage.sync.get({
                 document.removeEventListener(evt, handler, true);
                 window.removeEventListener(evt, handler, true);
             });
-            console.log('[PersonalAssistant] 超级复制模式已关闭');
+            console.log('[yukonChromeExtension] 超级复制模式已关闭');
         };
 
         // 初始加载

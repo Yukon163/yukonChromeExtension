@@ -44,7 +44,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-    console.log('Personal Assistant Extension installed/updated');
+    console.log('yukonChromeExtension installed/updated');
     
     // 初始化或迁移白名单
     chrome.storage.sync.get({ whitelist: ['cycani.org', 'mgnacg.com'] }, (items) => {

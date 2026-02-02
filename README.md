@@ -1,6 +1,6 @@
-# Cycani 视频倍速播放插件
+# yukonChromeExtension
 
-这是一个简单的 Chrome 浏览器插件，专门为 `cycani.org` 设计。
+这是一个功能强大的 Chrome 浏览器助手，最初为 `cycani.org` 设计，现已扩展为通用的媒体控制与代理管理工具。
 
 ## 安装说明
 1. 下载并解压本项目代码。
