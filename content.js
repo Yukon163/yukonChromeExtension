@@ -59,7 +59,7 @@ chrome.storage.sync.get({
 
                 const allowed = isMatch(host) || (window.self !== window.top && isMatch(ref));
                 if (!allowed && window.self === window.top) {
-                    console.log(`[VideoSpeed] 当前域名 ${host} 不在白名单中。如需在当前站点使用，请在插件选项页添加该域名。`);
+                    console.log(`[yukonChromeExtension] 当前域名 ${host} 不在白名单中。如需在当前站点使用，请在插件选项页添加该域名。`);
                 }
                 resolve(allowed);
             });
@@ -153,7 +153,7 @@ chrome.storage.sync.get({
         const isNext = direction === 'next';
         const targetText = isNext ? '下集' : '上集';
         
-        console.log(`[VideoSpeed] 正在发起广播: ${targetText}`);
+        console.log(`[yukonChromeExtension] 正在发起广播: ${targetText}`);
 
         // 尝试向后台发送消息进行中转
         try {
@@ -176,7 +176,7 @@ chrome.storage.sync.get({
     // 监听广播
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.type === 'NAV_EPISODE' && window === window.top) {
-            console.log(`[VideoSpeed] 主页面收到切集指令: ${msg.direction}`);
+            console.log(`[yukonChromeExtension] 主页面收到切集指令: ${msg.direction}`);
             executeNavigation(msg.direction);
         } else if (msg.type === 'SYNC_SPEED') {
             handleSyncSpeed(msg);
@@ -268,7 +268,7 @@ chrome.storage.sync.get({
 
         // 2. URL 预测逻辑 (支持多网站模式)
         if (!targetBtn && isNext) {
-            console.log(`[VideoSpeed] 尝试从 URL 预测下一集...`);
+            console.log(`[yukonChromeExtension] 尝试从 URL 预测下一集...`);
             
             let match = window.location.href.match(/(.*\/watch\/\d+\/\d+\/)(\d+)(\.html)/); // 模式 A: cycani
             if (!match) {
@@ -283,20 +283,20 @@ chrome.storage.sync.get({
                 const nextFullUrl = prefix + nextNum + suffix;
                 const nextPart = nextNum + suffix;
 
-                console.log(`[VideoSpeed] 预测目标 URL: ${nextFullUrl}`);
+                console.log(`[yukonChromeExtension] 预测目标 URL: ${nextFullUrl}`);
 
                 const allLinks = document.querySelectorAll('a[href]');
                 for (const a of allLinks) {
                     const aHref = a.getAttribute('href') || '';
                     if (aHref.includes(nextPart) || a.href.includes(nextPart)) {
-                        console.log(`[VideoSpeed] 在页面中找到了匹配的 URL 链接!`);
+                        console.log(`[yukonChromeExtension] 在页面中找到了匹配的 URL 链接!`);
                         targetBtn = a;
                         break;
                     }
                 }
 
                 if (!targetBtn) {
-                    console.log(`[VideoSpeed] 页面中未找到匹配链接，执行【强制跳转】模式`);
+                    console.log(`[yukonChromeExtension] 页面中未找到匹配链接，执行【强制跳转】模式`);
                     showIndicator(`强制跳转至下一集...`);
                     window.location.href = nextFullUrl;
                     return;
@@ -305,14 +305,14 @@ chrome.storage.sync.get({
         }
 
         if (targetBtn) {
-            console.log(`[VideoSpeed] 定位成功，准备点击:`, targetBtn);
+            console.log(`[yukonChromeExtension] 定位成功，准备点击:`, targetBtn);
             showIndicator(`跳转至${targetText}...`);
             
             // 针对 a 标签跳转的特殊处理
             const clickTarget = targetBtn.closest('a') || targetBtn.closest('button') || targetBtn;
             
             if (clickTarget.tagName === 'A' && clickTarget.href && !clickTarget.href.includes('javascript:')) {
-                console.log(`[VideoSpeed] 检测到链接地址，执行强制跳转: ${clickTarget.href}`);
+                console.log(`[yukonChromeExtension] 检测到链接地址，执行强制跳转: ${clickTarget.href}`);
                 window.location.href = clickTarget.href;
             } else {
                 clickTarget.click();
@@ -321,43 +321,30 @@ chrome.storage.sync.get({
         }
     }
 
-    // 清理界面上的干扰元素 (安全版本：定位特定横幅并移除)
+    // 清理界面上的干扰元素 (安全版本：仅针对特定横幅)
     function cleanupUI() {
         const targetText = 'iOS若播放失败请更换夸克浏览器';
         
-        // 1. 寻找包含该文字的特定横幅容器
+        // 1. 寻找直接包含该文字的特定横幅容器
         const allElements = document.querySelectorAll('div, li, section');
         allElements.forEach(el => {
-            // 检查元素自身的文本内容（移除空格）
-            const content = (el.innerText || el.textContent || '').replace(/\s+/g, '');
-            if (content.includes(targetText)) {
-                // 核心判断：如果这个元素包含一个关闭按钮（通常是带有 'fa-close' 或类似类的 i 标签，或者像截图里的红色 X）
-                // 或者它是一个明显的提示栏容器
+            // 检查元素是否直接包含该文本节点，避免误伤父级大容器
+            const hasDirectText = Array.from(el.childNodes).some(node => 
+                node.nodeType === Node.TEXT_NODE && node.textContent.includes(targetText)
+            );
+
+            if (hasDirectText) {
+                const rect = el.getBoundingClientRect();
+                // 横幅通常高度较小且包含关闭按钮特征
                 const hasCloseBtn = el.querySelector('.fa-close, .close, [class*="close"], .fa-times');
                 const isTicker = el.classList.contains('player-news') || el.classList.contains('ds-news-list');
                 
-                if (hasCloseBtn || isTicker) {
-                    // 找到了横幅容器，将其隐藏
+                if (hasCloseBtn || isTicker || (rect.height > 0 && rect.height < 100)) {
                     el.style.setProperty('display', 'none', 'important');
-                    console.log('[VideoSpeed] 已成功移除干扰横幅');
-                } else {
-                    // 如果没找到明显的容器，但它确实包含这段文字，且高度较小（横幅特征）
-                    const rect = el.getBoundingClientRect();
-                    if (rect.height > 0 && rect.height < 100) {
-                        el.style.setProperty('display', 'none', 'important');
-                    }
+                    console.log('[yukonChromeExtension] 已成功移除干扰横幅');
                 }
             }
         });
-
-        // 2. 备用：TreeWalker 清理残余文字节点
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-        let node;
-        while(node = walker.nextNode()) {
-            if (node.textContent.replace(/\s+/g, '').includes(targetText)) {
-                node.textContent = '';
-            }
-        }
     }
 
     // 持续监听 DOM 变化以清理新生成的干扰元素
@@ -370,7 +357,8 @@ chrome.storage.sync.get({
 
     // --- 超级复制功能 ---
     function initSuperCopy() {
-        const events = ['copy', 'cut', 'paste', 'selectstart', 'contextmenu', 'dragstart', 'mousedown', 'mouseup'];
+        // 只拦截关键的复制保护事件，移除 mousedown/mouseup 以免干扰播放器控制
+        const events = ['copy', 'cut', 'paste', 'selectstart', 'contextmenu', 'dragstart'];
         const handler = (e) => {
             e.stopPropagation();
             e.stopImmediatePropagation();
@@ -405,7 +393,6 @@ chrome.storage.sync.get({
             document.oncontextmenu = nullifier;
             document.onselectstart = nullifier;
             document.oncopy = nullifier;
-            document.onmousedown = nullifier;
             
             console.log('[yukonChromeExtension] 超级复制模式已激活');
         };
@@ -439,7 +426,7 @@ chrome.storage.sync.get({
         const allowed = await checkPermission();
         if (!allowed) return;
 
-        console.log('[VideoSpeed] 插件已在当前页面激活');
+        console.log('[yukonChromeExtension] 插件已在当前页面激活');
         
         initSuperCopy(); // 启动超级复制功能
         cleanupUI();
