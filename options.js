@@ -68,7 +68,18 @@ function initSpeedModule() {
 function initProxyModule() {
     const systemToggle = document.getElementById('proxy-system-toggle');
     const directToggle = document.getElementById('proxy-direct-toggle');
+    const badge = document.getElementById('proxy-status-badge');
     
+    function updateBadge(mode) {
+        if (mode === 'system') {
+            badge.textContent = '系统';
+            badge.classList.remove('active');
+        } else {
+            badge.textContent = '直连';
+            badge.classList.add('active');
+        }
+    }
+
     // 加载当前模式
     chrome.storage.sync.get({ proxyMode: 'system' }, (items) => {
         if (items.proxyMode === 'system') {
@@ -78,6 +89,19 @@ function initProxyModule() {
             systemToggle.checked = false;
             directToggle.checked = true;
         }
+        updateBadge(items.proxyMode);
+    });
+
+    // 快捷切换状态
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation(); // 阻止手风琴折叠
+        const newMode = badge.textContent === '系统' ? 'direct' : 'system';
+        chrome.storage.sync.set({ proxyMode: newMode }, () => {
+            systemToggle.checked = (newMode === 'system');
+            directToggle.checked = (newMode === 'direct');
+            updateBadge(newMode);
+            showStatus(`已切换为: ${newMode === 'system' ? '系统代理' : '直连'}`);
+        });
     });
 
     // 监听系统代理切换
@@ -85,12 +109,14 @@ function initProxyModule() {
         if (systemToggle.checked) {
             directToggle.checked = false;
             chrome.storage.sync.set({ proxyMode: 'system' }, () => {
+                updateBadge('system');
                 showStatus('已切换为: 系统代理');
             });
         } else {
             // 如果关掉系统代理，强制打开直连
             directToggle.checked = true;
             chrome.storage.sync.set({ proxyMode: 'direct' }, () => {
+                updateBadge('direct');
                 showStatus('已切换为: 直连');
             });
         }
@@ -101,12 +127,14 @@ function initProxyModule() {
         if (directToggle.checked) {
             systemToggle.checked = false;
             chrome.storage.sync.set({ proxyMode: 'direct' }, () => {
+                updateBadge('direct');
                 showStatus('已切换为: 直连');
             });
         } else {
             // 如果关掉直连，强制打开系统代理
             systemToggle.checked = true;
             chrome.storage.sync.set({ proxyMode: 'system' }, () => {
+                updateBadge('system');
                 showStatus('已切换为: 系统代理');
             });
         }
@@ -116,14 +144,38 @@ function initProxyModule() {
 // --- 超级复制模块逻辑 ---
 function initCopyModule() {
     const toggle = document.getElementById('super-copy-toggle');
+    const badge = document.getElementById('copy-status-badge');
+
+    function updateBadge(enabled) {
+        if (enabled) {
+            badge.textContent = '已开启';
+            badge.classList.add('active');
+        } else {
+            badge.textContent = '已关闭';
+            badge.classList.remove('active');
+        }
+    }
     
     chrome.storage.sync.get({ superCopy: false }, (items) => {
         toggle.checked = items.superCopy;
+        updateBadge(items.superCopy);
+    });
+
+    // 快捷切换状态
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation(); // 阻止手风琴折叠
+        const newState = badge.textContent === '已关闭';
+        chrome.storage.sync.set({ superCopy: newState }, () => {
+            toggle.checked = newState;
+            updateBadge(newState);
+            showStatus(newState ? '超级复制已开启' : '超级复制已关闭');
+        });
     });
 
     toggle.addEventListener('change', () => {
         const enabled = toggle.checked;
         chrome.storage.sync.set({ superCopy: enabled }, () => {
+            updateBadge(enabled);
             showStatus(enabled ? '超级复制已开启' : '超级复制已关闭');
         });
     });
