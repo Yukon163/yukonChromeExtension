@@ -191,6 +191,9 @@ chrome.storage.sync.get({
                 isSpeeding = true;
                 originalRate = video.playbackRate;
                 video.playbackRate = SPEED_UP_RATE;
+                if (video.paused) {
+                    video.play();
+                }
             }
             // 无论是否有视频，只要是当前活动的 Frame（或者所有 Frame）都显示指示器
             // 这样用户能感知到按键被触发了
