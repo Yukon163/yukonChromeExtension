@@ -3,8 +3,10 @@
     let isSpeeding = false;
     let originalRate = 1;
     let activeVideo = null;
+    let mouseTimer = null;
     const SPEED_UP_RATE = 2.0;
     const LONG_PRESS_THRESHOLD = 250;
+    const HIDE_MOUSE_DELAY = 3000; // 3秒无操作隐藏鼠标
 
     // 深度搜索所有 Shadow DOM 寻找 video
     function findVideoRecursively(root) {
@@ -422,6 +424,38 @@ chrome.storage.sync.get({
         });
     }
 
+    // --- 自动隐藏鼠标功能 ---
+    function initAutoHideMouse() {
+        const cssId = 'yukon-hide-mouse-css';
+        if (!document.getElementById(cssId)) {
+            const style = document.createElement('style');
+            style.id = cssId;
+            style.textContent = `
+                .yukon-hide-cursor {
+                    cursor: none !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const showMouse = () => {
+            document.documentElement.classList.remove('yukon-hide-cursor');
+            clearTimeout(mouseTimer);
+            
+            // 仅在全屏模式下启动隐藏计时器
+            if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement) {
+                mouseTimer = setTimeout(() => {
+                    document.documentElement.classList.add('yukon-hide-cursor');
+                }, HIDE_MOUSE_DELAY);
+            }
+        };
+
+        window.addEventListener('mousemove', showMouse, true);
+        document.addEventListener('fullscreenchange', showMouse);
+        document.addEventListener('webkitfullscreenchange', showMouse);
+        document.addEventListener('mozfullscreenchange', showMouse);
+    }
+
     async function start() {
         const allowed = await checkPermission();
         if (!allowed) return;
@@ -429,6 +463,7 @@ chrome.storage.sync.get({
         console.log('[yukonChromeExtension] 插件已在当前页面激活');
         
         initSuperCopy(); // 启动超级复制功能
+        initAutoHideMouse(); // 启动自动隐藏鼠标功能
         cleanupUI();
         observeUI(); // 开启持续监听
 
