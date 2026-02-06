@@ -1,0 +1,55 @@
+/* CSDN 优化样式 */
+
+/* === 核心去广告屏蔽列表 === */
+.passport-login-container,       /* 登录弹窗 */
+.csdn-side-toolbar,              /* 右侧悬浮工具栏 */
+#csdn-toolbar,                   /* 顶部导航栏 */
+.siderbar-box,                   /* 侧边栏广告 */
+.recommend-card-box,             /* 底部推荐卡片 */
+.recommend-right,                /* 右侧推荐 */
+#recommendAdBox,                 /* 推荐广告 */
+.toolbar-advert,                 /* 工具栏广告 */
+.hide-article-box,               /* "展开阅读全文"遮罩 */
+.article-show-more,              /* "展开阅读全文"按钮 */
+.csdn-shop-window,               /* 底部购物窗口 */
+.active-blog-aside,              /* 活动侧边栏 */
+.blog_container_aside,           /* 左侧信息栏 */
+#rightAside,                     /* 右侧目录栏 */
+.feed-Sign-span                  /* 底部签名广告 */
+{
+    display: none !important;
+}
+
+/* === UX优化：自动展开内容 === */
+#article_content,
+.user-article,
+#content_views pre,
+#content_views pre code {
+    height: auto !important;
+    max-height: none !important;
+    overflow: auto !important;
+}
+
+/* === UX优化：文章居中显示 === */
+/* 去除左边距，配合隐藏侧边栏实现居中 */
+#mainBox, main {
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    display: flex;
+    justify-content: center;
+}
+
+/* 限制文章容器最大宽度，避免太宽难以阅读 */
+.blog-content-box {
+    width: 1000px !important;
+    max-width: 95vw !important;
+    margin: 0 auto !important;
+}
+
+/* === UX优化：强制开启用户选择（解决无法复制问题） === */
+* {
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    user-select: text !important;
+}

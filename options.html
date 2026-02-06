@@ -410,7 +410,33 @@
             </div>
         </div>
 
-        <!-- 模块 4: 功能显示管理 (仅在设置页可见) -->
+        <!-- 模块 4: CSDN 优化模块 -->
+        <div class="module-card" id="module-csdn">
+            <div class="module-header">
+                <div class="module-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    CSDN 优化
+                </div>
+                <div class="header-right">
+                    <span class="status-badge" id="csdn-status-badge">已开启</span>
+                    <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+            </div>
+            <div class="module-content">
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">启用 CSDN 优化</span>
+                        <span class="option-desc">包含：去广告、自动展开全文、免登录复制、链接直连</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="csdn-optimize-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </label>
+            </div>
+        </div>
+
+        <!-- 模块 5: 功能显示管理 (仅在设置页可见) -->
         <div class="module-card" id="module-settings">
             <div class="module-header">
                 <div class="module-title">
@@ -444,6 +470,15 @@
                     </div>
                     <label class="switch">
                         <input type="checkbox" id="visibility-copy" checked>
+                        <span class="slider"></span>
+                    </label>
+                </label>
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">CSDN 优化</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="visibility-csdn" checked>
                         <span class="slider"></span>
                     </label>
                 </label>

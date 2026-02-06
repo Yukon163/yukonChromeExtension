@@ -198,16 +198,57 @@ function initCopyModule() {
     });
 }
 
+// --- CSDN 优化模块逻辑 ---
+function initCsdnModule() {
+    const toggle = document.getElementById('csdn-optimize-toggle');
+    const badge = document.getElementById('csdn-status-badge');
+
+    function updateBadge(enabled) {
+        if (enabled) {
+            badge.textContent = '已开启';
+            badge.classList.add('active');
+        } else {
+            badge.textContent = '已关闭';
+            badge.classList.remove('active');
+        }
+    }
+    
+    chrome.storage.sync.get({ csdnOptimize: true }, (items) => {
+        toggle.checked = items.csdnOptimize;
+        updateBadge(items.csdnOptimize);
+    });
+
+    // 快捷切换状态
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const newState = badge.textContent === '已关闭';
+        chrome.storage.sync.set({ csdnOptimize: newState }, () => {
+            toggle.checked = newState;
+            updateBadge(newState);
+            showStatus(newState ? 'CSDN 优化已开启 (刷新生效)' : 'CSDN 优化已关闭 (刷新生效)');
+        });
+    });
+
+    toggle.addEventListener('change', () => {
+        const enabled = toggle.checked;
+        chrome.storage.sync.set({ csdnOptimize: enabled }, () => {
+            updateBadge(enabled);
+            showStatus(enabled ? 'CSDN 优化已开启 (刷新生效)' : 'CSDN 优化已关闭 (刷新生效)');
+        });
+    });
+}
+
 // --- 功能显示管理模块逻辑 ---
 function initSettingsModule() {
     const configs = [
         { id: 'visibility-speed', module: 'module-speed', key: 'speed' },
         { id: 'visibility-proxy', module: 'module-proxy', key: 'proxy' },
-        { id: 'visibility-copy', module: 'module-copy', key: 'copy' }
+        { id: 'visibility-copy', module: 'module-copy', key: 'copy' },
+        { id: 'visibility-csdn', module: 'module-csdn', key: 'csdn' }
     ];
 
     chrome.storage.sync.get({
-        visibleModules: { speed: true, proxy: true, copy: true }
+        visibleModules: { speed: true, proxy: true, copy: true, csdn: true }
     }, (items) => {
         const visibility = items.visibleModules;
         
@@ -239,6 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSpeedModule();
     initProxyModule();
     initCopyModule();
+    initCsdnModule();
     initSettingsModule();
 
     // 更多设置跳转

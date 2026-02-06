@@ -18,6 +18,12 @@
       "js": ["content.js"],
       "all_frames": true,
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.csdn.net/*"],
+      "js": ["csdn.js"],
+      "css": ["csdn.css"],
+      "run_at": "document_start"
     }
   ]
 }
