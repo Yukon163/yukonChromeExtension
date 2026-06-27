@@ -7,8 +7,9 @@
     const SPEED_UP_RATE = 2.0;
     const LONG_PRESS_THRESHOLD = 250;
     const HIDE_MOUSE_DELAY = 3000; // 3秒无操作隐藏鼠标
-    const FEISHU_FORMULA_SEARCH = '/公式';
-    const FEISHU_FORMULA_LABEL_PATTERN = /(?:添加\s*)?(?:LaTeX\s*)?公式/i;
+    const FEISHU_FORMULA_DOLLARS_FIRST = '$$$';
+    const FEISHU_FORMULA_DOLLARS_LAST = '$';
+    const FEISHU_FORMULA_DOLLAR_PAUSE = 35;
     const FEISHU_DOC_PATH_PATTERN = /^\/(?:docx|docs|wiki|sheets|base|mindnotes|mindnote|slides|file|drive|space|minutes)\//;
     let lastFeishuFormulaOpenAt = 0;
     let isOpeningFeishuFormula = false;
@@ -353,19 +354,24 @@ chrome.storage.sync.get({
 
     function getKeyInfo(char) {
         if (char === '/') {
-            return { key: '/', code: 'Slash' };
+            return { key: '/', code: 'Slash', shiftKey: false };
         }
 
-        return { key: char, code: '' };
+        if (char === '$') {
+            return { key: '$', code: 'Digit4', shiftKey: true };
+        }
+
+        return { key: char, code: '', shiftKey: false };
     }
 
     function dispatchTextInputEvents(target, char) {
         if (!target) return { keydownPrevented: false, keypressPrevented: false, beforeInputPrevented: false };
 
-        const { key, code } = getKeyInfo(char);
+        const { key, code, shiftKey } = getKeyInfo(char);
         const keydown = new KeyboardEvent('keydown', {
             key,
             code,
+            shiftKey,
             bubbles: true,
             cancelable: true,
             composed: true
@@ -375,6 +381,7 @@ chrome.storage.sync.get({
         const keypress = new KeyboardEvent('keypress', {
             key,
             code,
+            shiftKey,
             bubbles: true,
             cancelable: true,
             composed: true
@@ -396,10 +403,11 @@ chrome.storage.sync.get({
     function dispatchTextKeyup(target, char) {
         if (!target) return;
 
-        const { key, code } = getKeyInfo(char);
+        const { key, code, shiftKey } = getKeyInfo(char);
         target.dispatchEvent(new KeyboardEvent('keyup', {
             key,
             code,
+            shiftKey,
             bubbles: true,
             cancelable: true,
             composed: true
@@ -436,174 +444,14 @@ chrome.storage.sync.get({
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    function isVisibleElement(el) {
-        if (!el || !(el instanceof Element)) return false;
-
-        const style = window.getComputedStyle(el);
-        if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) {
-            return false;
-        }
-
-        const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }
-
-    function getElementText(el) {
-        return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-    }
-
-    function getClickableElement(el) {
-        if (!el) return null;
-        return el.closest('button, [role="button"], [role="menuitem"], [role="option"], [tabindex], li, a') || el;
-    }
-
-    function collectElementsDeep(root, selector, results = []) {
-        if (!root?.querySelectorAll) return results;
-
-        root.querySelectorAll('*').forEach(el => {
-            if (el.matches(selector)) results.push(el);
-            if (el.shadowRoot) collectElementsDeep(el.shadowRoot, selector, results);
-        });
-
-        return results;
-    }
-
-    function clickElement(el) {
-        if (!isVisibleElement(el)) return false;
-
-        const rect = el.getBoundingClientRect();
-        const options = {
-            bubbles: true,
-            cancelable: true,
-            composed: true,
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2,
-            button: 0,
-            buttons: 1
-        };
-
-        el.dispatchEvent(new MouseEvent('mousemove', options));
-        el.dispatchEvent(new MouseEvent('mousedown', options));
-        el.dispatchEvent(new MouseEvent('mouseup', { ...options, buttons: 0 }));
-        if (typeof el.click === 'function') el.click();
-        return true;
-    }
-
-    function isFeishuFormulaEditorOpen() {
-        const candidates = collectElementsDeep(document, 'input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"], div, span');
-
-        return candidates.some(el => {
-            if (!isVisibleElement(el)) return false;
-
-            const placeholder = el.getAttribute('placeholder') || el.getAttribute('aria-placeholder') || '';
-            const text = getElementText(el);
-
-            return placeholder.includes('请输入公式') ||
-                text.includes('请输入公式') ||
-                text.includes('按 ESC 完成输入');
-        });
-    }
-
-    function isLikelyInteractiveElement(el) {
-        if (!el) return false;
-        const className = el.className?.toString() || '';
-        const style = window.getComputedStyle(el);
-
-        return ['BUTTON', 'A', 'LI'].includes(el.tagName) ||
-            el.hasAttribute('role') ||
-            el.hasAttribute('tabindex') ||
-            style.cursor === 'pointer' ||
-            /menu|dropdown|popover|toolbar|slash|command|item|option/i.test(className);
-    }
-
-    function getFormulaMenuItemClickTarget(el) {
-        let best = getClickableElement(el);
-        let bestArea = 0;
-        let current = el;
-        let depth = 0;
-
-        while (current && current !== document.body && depth < 8) {
-            if (isVisibleElement(current)) {
-                const text = getElementText(current);
-                const rect = current.getBoundingClientRect();
-                const looksLikeMenuRow = text &&
-                    text.length <= 100 &&
-                    FEISHU_FORMULA_LABEL_PATTERN.test(text) &&
-                    rect.width >= 80 &&
-                    rect.height >= 24 &&
-                    rect.height <= 80;
-
-                if (looksLikeMenuRow) {
-                    const area = rect.width * rect.height;
-                    if (isLikelyInteractiveElement(current) || area > bestArea) {
-                        best = current;
-                        bestArea = area;
-                    }
-                }
-            }
-
-            current = current.parentElement;
-            depth += 1;
-        }
-
-        return best || el;
-    }
-
-    function clickFeishuFormulaMenuItem(strict = false) {
-        const candidates = collectElementsDeep(document, 'button, [role="button"], [role="menuitem"], [role="option"], li, div, span');
-        const matches = candidates
-            .filter(isVisibleElement)
-            .filter(el => !isInsideEditableElement(el))
-            .map(el => ({ el, text: getElementText(el) }))
-            .filter(({ text }) => {
-                if (!text || text.length > 80) return false;
-                if (text.includes('帮助') || text.includes('ESC') || text.includes('请输入公式')) return false;
-                return FEISHU_FORMULA_LABEL_PATTERN.test(text);
-            })
-            .filter(({ el, text }) => {
-                if (/LaTeX/i.test(text) || text.includes('添加')) return true;
-                if (strict) return false;
-
-                const clickTarget = getClickableElement(el);
-                return isLikelyInteractiveElement(clickTarget) || isLikelyInteractiveElement(el);
-            })
-            .sort((a, b) => {
-                const aScore = Number(/LaTeX/i.test(a.text)) + Number(a.text.includes('添加'));
-                const bScore = Number(/LaTeX/i.test(b.text)) + Number(b.text.includes('添加'));
-                return bScore - aScore;
-            });
-
-        for (const { el } of matches) {
-            const clickTarget = getFormulaMenuItemClickTarget(el);
-            if (clickElement(clickTarget)) return true;
-        }
-
-        return false;
-    }
-
     async function typeTextAtCursor(text) {
         let inserted = false;
 
         for (const char of text) {
             inserted = typeCharacterLikeKeyboard(char) || inserted;
-            if (char === '/') await wait(35);
         }
 
         return inserted;
-    }
-
-    async function clickFeishuFormulaMenuItemUntilOpen(strict = false, attempts = 4) {
-        for (let i = 0; i < attempts; i += 1) {
-            if (clickFeishuFormulaMenuItem(strict)) {
-                await wait(150);
-                if (isFeishuFormulaEditorOpen()) return true;
-                return true;
-            }
-
-            await wait(100);
-        }
-
-        return false;
     }
 
     async function openFeishuFormulaBlock() {
@@ -614,16 +462,9 @@ chrome.storage.sync.get({
         lastFeishuFormulaOpenAt = now;
 
         try {
-            if (isFeishuFormulaEditorOpen()) return true;
-
-            if (await clickFeishuFormulaMenuItemUntilOpen(true, 1)) return true;
-
-            await typeTextAtCursor(FEISHU_FORMULA_SEARCH);
-            await wait(250);
-
-            if (await clickFeishuFormulaMenuItemUntilOpen(false, 5)) return true;
-
-            return false;
+            await typeTextAtCursor(FEISHU_FORMULA_DOLLARS_FIRST);
+            await wait(FEISHU_FORMULA_DOLLAR_PAUSE);
+            return typeTextAtCursor(FEISHU_FORMULA_DOLLARS_LAST);
         } finally {
             isOpeningFeishuFormula = false;
         }
