@@ -357,6 +357,69 @@ chrome.storage.sync.get({
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
+    // --- 强制暗色模式 ---
+    function initDarkMode() {
+        const cssId = 'yukon-force-dark-mode-css';
+        const className = 'yukon-force-dark-mode';
+
+        const ensureStyle = () => {
+            if (document.getElementById(cssId)) return;
+
+            const style = document.createElement('style');
+            style.id = cssId;
+            style.textContent = `
+                html.${className} {
+                    background-color: #ffffff !important;
+                    color-scheme: dark !important;
+                    filter: invert(1) hue-rotate(180deg) !important;
+                }
+                html.${className} body {
+                    background-color: #ffffff !important;
+                    color: #111111 !important;
+                }
+                html.${className} input,
+                html.${className} textarea,
+                html.${className} select,
+                html.${className} button {
+                    background-color: #f2f2f2 !important;
+                    color: #111111 !important;
+                    border-color: #bbbbbb !important;
+                }
+                html.${className} img,
+                html.${className} picture,
+                html.${className} video,
+                html.${className} canvas,
+                html.${className} object,
+                html.${className} embed,
+                html.${className} [style*="background-image"] {
+                    filter: invert(1) hue-rotate(180deg) !important;
+                }
+            `;
+            (document.head || document.documentElement).appendChild(style);
+        };
+
+        const setEnabled = (enabled) => {
+            if (enabled) {
+                ensureStyle();
+                document.documentElement.classList.add(className);
+            } else {
+                document.documentElement.classList.remove(className);
+                const style = document.getElementById(cssId);
+                if (style) style.remove();
+            }
+        };
+
+        chrome.storage.sync.get({ darkMode: false }, (items) => {
+            setEnabled(Boolean(items.darkMode));
+        });
+
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'sync' && changes.darkMode) {
+                setEnabled(Boolean(changes.darkMode.newValue));
+            }
+        });
+    }
+
     // --- 超级复制功能 ---
     function initSuperCopy() {
         // 只拦截关键的复制保护事件，移除 mousedown/mouseup 以免干扰播放器控制
@@ -457,6 +520,8 @@ chrome.storage.sync.get({
     }
 
     async function start() {
+        initDarkMode(); // 暗色模式作用于所有可注入页面，不受视频白名单限制
+
         const allowed = await checkPermission();
         if (!allowed) return;
 

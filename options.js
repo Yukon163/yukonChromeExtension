@@ -198,6 +198,45 @@ function initCopyModule() {
     });
 }
 
+// --- 强制暗色模式模块逻辑 ---
+function initDarkModeModule() {
+    const toggle = document.getElementById('dark-mode-toggle');
+    const badge = document.getElementById('dark-status-badge');
+
+    function updateBadge(enabled) {
+        if (enabled) {
+            badge.textContent = '已开启';
+            badge.classList.add('active');
+        } else {
+            badge.textContent = '已关闭';
+            badge.classList.remove('active');
+        }
+    }
+
+    chrome.storage.sync.get({ darkMode: false }, (items) => {
+        toggle.checked = items.darkMode;
+        updateBadge(items.darkMode);
+    });
+
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const newState = badge.textContent === '已关闭';
+        chrome.storage.sync.set({ darkMode: newState }, () => {
+            toggle.checked = newState;
+            updateBadge(newState);
+            showStatus(newState ? '暗色模式已开启' : '暗色模式已关闭');
+        });
+    });
+
+    toggle.addEventListener('change', () => {
+        const enabled = toggle.checked;
+        chrome.storage.sync.set({ darkMode: enabled }, () => {
+            updateBadge(enabled);
+            showStatus(enabled ? '暗色模式已开启' : '暗色模式已关闭');
+        });
+    });
+}
+
 // --- CSDN 优化模块逻辑 ---
 function initCsdnModule() {
     const toggle = document.getElementById('csdn-optimize-toggle');
@@ -240,17 +279,19 @@ function initCsdnModule() {
 
 // --- 功能显示管理模块逻辑 ---
 function initSettingsModule() {
+    const defaultVisibility = { speed: true, proxy: true, copy: true, dark: true, csdn: true };
     const configs = [
         { id: 'visibility-speed', module: 'module-speed', key: 'speed' },
         { id: 'visibility-proxy', module: 'module-proxy', key: 'proxy' },
         { id: 'visibility-copy', module: 'module-copy', key: 'copy' },
+        { id: 'visibility-dark', module: 'module-dark', key: 'dark' },
         { id: 'visibility-csdn', module: 'module-csdn', key: 'csdn' }
     ];
 
     chrome.storage.sync.get({
-        visibleModules: { speed: true, proxy: true, copy: true, csdn: true }
+        visibleModules: defaultVisibility
     }, (items) => {
-        const visibility = items.visibleModules;
+        const visibility = { ...defaultVisibility, ...items.visibleModules };
         
         configs.forEach(cfg => {
             const checkbox = document.getElementById(cfg.id);
@@ -280,6 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSpeedModule();
     initProxyModule();
     initCopyModule();
+    initDarkModeModule();
     initCsdnModule();
     initSettingsModule();
 

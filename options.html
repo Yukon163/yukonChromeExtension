@@ -410,7 +410,33 @@
             </div>
         </div>
 
-        <!-- 模块 4: CSDN 优化模块 -->
+        <!-- 模块 4: 强制暗色模式 -->
+        <div class="module-card" id="module-dark">
+            <div class="module-header">
+                <div class="module-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>
+                    强制暗色模式
+                </div>
+                <div class="header-right">
+                    <span class="status-badge" id="dark-status-badge">已关闭</span>
+                    <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+            </div>
+            <div class="module-content">
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">启用全站暗色模式</span>
+                        <span class="option-desc">将可注入网页强制转换为深色显示，图片和视频保持原色</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="dark-mode-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </label>
+            </div>
+        </div>
+
+        <!-- 模块 5: CSDN 优化模块 -->
         <div class="module-card" id="module-csdn">
             <div class="module-header">
                 <div class="module-title">
@@ -436,7 +462,7 @@
             </div>
         </div>
 
-        <!-- 模块 5: 功能显示管理 (仅在设置页可见) -->
+        <!-- 模块 6: 功能显示管理 (仅在设置页可见) -->
         <div class="module-card" id="module-settings">
             <div class="module-header">
                 <div class="module-title">
@@ -470,6 +496,15 @@
                     </div>
                     <label class="switch">
                         <input type="checkbox" id="visibility-copy" checked>
+                        <span class="slider"></span>
+                    </label>
+                </label>
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">强制暗色模式</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="visibility-dark" checked>
                         <span class="slider"></span>
                     </label>
                 </label>
