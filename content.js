@@ -7,6 +7,11 @@
     const SPEED_UP_RATE = 2.0;
     const LONG_PRESS_THRESHOLD = 250;
     const HIDE_MOUSE_DELAY = 3000; // 3秒无操作隐藏鼠标
+    const FEISHU_FORMULA_SEARCH = '/公式';
+    const FEISHU_FORMULA_LABEL_PATTERN = /(?:添加\s*)?(?:LaTeX\s*)?公式/i;
+    const FEISHU_DOC_PATH_PATTERN = /^\/(?:docx|docs|wiki|sheets|base|mindnotes|mindnote|slides|file|drive|space|minutes)\//;
+    let lastFeishuFormulaOpenAt = 0;
+    let isOpeningFeishuFormula = false;
 
     // 深度搜索所有 Shadow DOM 寻找 video
     function findVideoRecursively(root) {
@@ -182,6 +187,10 @@ chrome.storage.sync.get({
             executeNavigation(msg.direction);
         } else if (msg.type === 'SYNC_SPEED') {
             handleSyncSpeed(msg);
+        } else if (msg.type === 'OPEN_FEISHU_FORMULA') {
+            if (isFeishuDocPage() && (msg.source !== 'command' || hasFeishuEditingFocus())) {
+                openFeishuFormulaBlock();
+            }
         }
     });
 
@@ -212,6 +221,427 @@ chrome.storage.sync.get({
             }
             showIndicator(`+${msg.seconds}s`);
         }
+    }
+
+    function isFeishuDocPage() {
+        const host = window.location.hostname.replace(/^www\./, '');
+        const isFeishuHost = host === 'feishu.cn' || host.endsWith('.feishu.cn') ||
+            host === 'larksuite.com' || host.endsWith('.larksuite.com');
+
+        if (!isFeishuHost) return false;
+
+        return host === 'docs.feishu.cn' ||
+            host.endsWith('.docs.feishu.cn') ||
+            FEISHU_DOC_PATH_PATTERN.test(window.location.pathname);
+    }
+
+    function getDeepActiveElement() {
+        let active = document.activeElement;
+
+        while (active && active.shadowRoot && active.shadowRoot.activeElement) {
+            active = active.shadowRoot.activeElement;
+        }
+
+        return active;
+    }
+
+    function isTextInput(el) {
+        if (!el) return false;
+        if (el.tagName === 'TEXTAREA') return true;
+        if (el.tagName !== 'INPUT') return false;
+
+        const type = (el.getAttribute('type') || 'text').toLowerCase();
+        return ['text', 'search', 'url', 'tel', 'password', 'email'].includes(type);
+    }
+
+    function setNativeInputValue(el, value) {
+        const prototype = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const valueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+        if (valueSetter) valueSetter.call(el, value);
+        else el.value = value;
+    }
+
+    function insertIntoTextInput(el, text) {
+        if (el.disabled || el.readOnly) return false;
+
+        const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+        const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
+        const nextValue = el.value.slice(0, start) + text + el.value.slice(end);
+        const nextCursor = start + text.length;
+
+        setNativeInputValue(el, nextValue);
+        try {
+            el.setSelectionRange(nextCursor, nextCursor);
+        } catch (e) {
+            // 部分输入类型不支持选区设置，值已经写入即可。
+        }
+        el.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            composed: true,
+            inputType: 'insertText',
+            data: text
+        }));
+        return true;
+    }
+
+    function getEditableElement(node) {
+        if (!node) return null;
+        const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+        return el ? el.closest('[contenteditable="true"], [contenteditable="plaintext-only"]') : null;
+    }
+
+    function isInsideEditableElement(el) {
+        return Boolean(el?.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]'));
+    }
+
+    function insertIntoContentEditable(text) {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return false;
+
+        const editable = getEditableElement(selection.anchorNode);
+        if (!editable || editable !== getEditableElement(selection.focusNode)) return false;
+
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+
+        const textNode = document.createTextNode(text);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.collapse(true);
+
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        editable.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            composed: true,
+            inputType: 'insertText',
+            data: text
+        }));
+        return true;
+    }
+
+    function insertTextAtCursor(text) {
+        try {
+            if (document.queryCommandSupported?.('insertText') && document.execCommand('insertText', false, text)) {
+                return true;
+            }
+        } catch (e) {
+            // 某些页面会禁用 execCommand，继续走输入框和 contenteditable 兜底。
+        }
+
+        const active = getDeepActiveElement();
+        if (isTextInput(active) && insertIntoTextInput(active, text)) {
+            return true;
+        }
+
+        return insertIntoContentEditable(text);
+    }
+
+    function getTextInputTarget() {
+        const active = getDeepActiveElement();
+        if (isTextInput(active)) return active;
+
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            return getEditableElement(selection.anchorNode);
+        }
+
+        return isInsideEditableElement(active) ? active.closest('[contenteditable="true"], [contenteditable="plaintext-only"]') : null;
+    }
+
+    function getKeyInfo(char) {
+        if (char === '/') {
+            return { key: '/', code: 'Slash' };
+        }
+
+        return { key: char, code: '' };
+    }
+
+    function dispatchTextInputEvents(target, char) {
+        if (!target) return { keydownPrevented: false, keypressPrevented: false, beforeInputPrevented: false };
+
+        const { key, code } = getKeyInfo(char);
+        const keydown = new KeyboardEvent('keydown', {
+            key,
+            code,
+            bubbles: true,
+            cancelable: true,
+            composed: true
+        });
+        const keydownPrevented = !target.dispatchEvent(keydown);
+
+        const keypress = new KeyboardEvent('keypress', {
+            key,
+            code,
+            bubbles: true,
+            cancelable: true,
+            composed: true
+        });
+        const keypressPrevented = !target.dispatchEvent(keypress);
+
+        const beforeInput = new InputEvent('beforeinput', {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            inputType: 'insertText',
+            data: char
+        });
+        const beforeInputPrevented = !target.dispatchEvent(beforeInput);
+
+        return { keydownPrevented, keypressPrevented, beforeInputPrevented };
+    }
+
+    function dispatchTextKeyup(target, char) {
+        if (!target) return;
+
+        const { key, code } = getKeyInfo(char);
+        target.dispatchEvent(new KeyboardEvent('keyup', {
+            key,
+            code,
+            bubbles: true,
+            cancelable: true,
+            composed: true
+        }));
+    }
+
+    function typeCharacterLikeKeyboard(char) {
+        const target = getTextInputTarget();
+        const { keydownPrevented, keypressPrevented, beforeInputPrevented } = dispatchTextInputEvents(target, char);
+
+        if (!keydownPrevented && !keypressPrevented && !beforeInputPrevented) {
+            insertTextAtCursor(char);
+        }
+
+        dispatchTextKeyup(target, char);
+        return true;
+    }
+
+    function hasFeishuEditingFocus() {
+        if (!document.hasFocus()) return false;
+
+        const active = getDeepActiveElement();
+        if (isTextInput(active) || isInsideEditableElement(active)) return true;
+
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return false;
+
+        const anchorEditable = getEditableElement(selection.anchorNode);
+        const focusEditable = getEditableElement(selection.focusNode);
+        return Boolean(anchorEditable && anchorEditable === focusEditable);
+    }
+
+    function wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function isVisibleElement(el) {
+        if (!el || !(el instanceof Element)) return false;
+
+        const style = window.getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) {
+            return false;
+        }
+
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    function getElementText(el) {
+        return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getClickableElement(el) {
+        if (!el) return null;
+        return el.closest('button, [role="button"], [role="menuitem"], [role="option"], [tabindex], li, a') || el;
+    }
+
+    function collectElementsDeep(root, selector, results = []) {
+        if (!root?.querySelectorAll) return results;
+
+        root.querySelectorAll('*').forEach(el => {
+            if (el.matches(selector)) results.push(el);
+            if (el.shadowRoot) collectElementsDeep(el.shadowRoot, selector, results);
+        });
+
+        return results;
+    }
+
+    function clickElement(el) {
+        if (!isVisibleElement(el)) return false;
+
+        const rect = el.getBoundingClientRect();
+        const options = {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+            button: 0,
+            buttons: 1
+        };
+
+        el.dispatchEvent(new MouseEvent('mousemove', options));
+        el.dispatchEvent(new MouseEvent('mousedown', options));
+        el.dispatchEvent(new MouseEvent('mouseup', { ...options, buttons: 0 }));
+        if (typeof el.click === 'function') el.click();
+        return true;
+    }
+
+    function isFeishuFormulaEditorOpen() {
+        const candidates = collectElementsDeep(document, 'input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"], div, span');
+
+        return candidates.some(el => {
+            if (!isVisibleElement(el)) return false;
+
+            const placeholder = el.getAttribute('placeholder') || el.getAttribute('aria-placeholder') || '';
+            const text = getElementText(el);
+
+            return placeholder.includes('请输入公式') ||
+                text.includes('请输入公式') ||
+                text.includes('按 ESC 完成输入');
+        });
+    }
+
+    function isLikelyInteractiveElement(el) {
+        if (!el) return false;
+        const className = el.className?.toString() || '';
+        const style = window.getComputedStyle(el);
+
+        return ['BUTTON', 'A', 'LI'].includes(el.tagName) ||
+            el.hasAttribute('role') ||
+            el.hasAttribute('tabindex') ||
+            style.cursor === 'pointer' ||
+            /menu|dropdown|popover|toolbar|slash|command|item|option/i.test(className);
+    }
+
+    function getFormulaMenuItemClickTarget(el) {
+        let best = getClickableElement(el);
+        let bestArea = 0;
+        let current = el;
+        let depth = 0;
+
+        while (current && current !== document.body && depth < 8) {
+            if (isVisibleElement(current)) {
+                const text = getElementText(current);
+                const rect = current.getBoundingClientRect();
+                const looksLikeMenuRow = text &&
+                    text.length <= 100 &&
+                    FEISHU_FORMULA_LABEL_PATTERN.test(text) &&
+                    rect.width >= 80 &&
+                    rect.height >= 24 &&
+                    rect.height <= 80;
+
+                if (looksLikeMenuRow) {
+                    const area = rect.width * rect.height;
+                    if (isLikelyInteractiveElement(current) || area > bestArea) {
+                        best = current;
+                        bestArea = area;
+                    }
+                }
+            }
+
+            current = current.parentElement;
+            depth += 1;
+        }
+
+        return best || el;
+    }
+
+    function clickFeishuFormulaMenuItem(strict = false) {
+        const candidates = collectElementsDeep(document, 'button, [role="button"], [role="menuitem"], [role="option"], li, div, span');
+        const matches = candidates
+            .filter(isVisibleElement)
+            .filter(el => !isInsideEditableElement(el))
+            .map(el => ({ el, text: getElementText(el) }))
+            .filter(({ text }) => {
+                if (!text || text.length > 80) return false;
+                if (text.includes('帮助') || text.includes('ESC') || text.includes('请输入公式')) return false;
+                return FEISHU_FORMULA_LABEL_PATTERN.test(text);
+            })
+            .filter(({ el, text }) => {
+                if (/LaTeX/i.test(text) || text.includes('添加')) return true;
+                if (strict) return false;
+
+                const clickTarget = getClickableElement(el);
+                return isLikelyInteractiveElement(clickTarget) || isLikelyInteractiveElement(el);
+            })
+            .sort((a, b) => {
+                const aScore = Number(/LaTeX/i.test(a.text)) + Number(a.text.includes('添加'));
+                const bScore = Number(/LaTeX/i.test(b.text)) + Number(b.text.includes('添加'));
+                return bScore - aScore;
+            });
+
+        for (const { el } of matches) {
+            const clickTarget = getFormulaMenuItemClickTarget(el);
+            if (clickElement(clickTarget)) return true;
+        }
+
+        return false;
+    }
+
+    async function typeTextAtCursor(text) {
+        let inserted = false;
+
+        for (const char of text) {
+            inserted = typeCharacterLikeKeyboard(char) || inserted;
+            if (char === '/') await wait(35);
+        }
+
+        return inserted;
+    }
+
+    async function clickFeishuFormulaMenuItemUntilOpen(strict = false, attempts = 4) {
+        for (let i = 0; i < attempts; i += 1) {
+            if (clickFeishuFormulaMenuItem(strict)) {
+                await wait(150);
+                if (isFeishuFormulaEditorOpen()) return true;
+                return true;
+            }
+
+            await wait(100);
+        }
+
+        return false;
+    }
+
+    async function openFeishuFormulaBlock() {
+        const now = Date.now();
+        if (isOpeningFeishuFormula || now - lastFeishuFormulaOpenAt < 300) return false;
+
+        isOpeningFeishuFormula = true;
+        lastFeishuFormulaOpenAt = now;
+
+        try {
+            if (isFeishuFormulaEditorOpen()) return true;
+
+            if (await clickFeishuFormulaMenuItemUntilOpen(true, 1)) return true;
+
+            await typeTextAtCursor(FEISHU_FORMULA_SEARCH);
+            await wait(250);
+
+            if (await clickFeishuFormulaMenuItemUntilOpen(false, 5)) return true;
+
+            return false;
+        } finally {
+            isOpeningFeishuFormula = false;
+        }
+    }
+
+    function initFeishuDollarShortcut() {
+        if (!isFeishuDocPage()) return;
+
+        window.addEventListener('keydown', (e) => {
+            if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.repeat) return;
+            if (e.code !== 'Digit4' && e.key !== '4') return;
+
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            openFeishuFormulaBlock();
+        }, true);
+
+        console.log('[yukonChromeExtension] 飞书云文档 Ctrl+4 公式块快捷输入已激活');
     }
 
     function executeNavigation(direction) {
@@ -521,6 +951,7 @@ chrome.storage.sync.get({
 
     async function start() {
         initDarkMode(); // 暗色模式作用于所有可注入页面，不受视频白名单限制
+        initFeishuDollarShortcut(); // 飞书云文档快捷输入不受视频白名单限制
 
         const allowed = await checkPermission();
         if (!allowed) return;

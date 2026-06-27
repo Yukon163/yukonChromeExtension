@@ -3,10 +3,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if ((message.type === 'NAV_EPISODE' || message.type === 'SYNC_SPEED') && sender.tab) {
         // Relay the message back to all frames in the same tab
         // For NAV_EPISODE, we might want to keep it to frame 0, but for SYNC_SPEED, we need all frames
-        const targetFrameId = message.type === 'NAV_EPISODE' ? 0 : undefined;
-        chrome.tabs.sendMessage(sender.tab.id, message, { frameId: targetFrameId });
+        const options = message.type === 'NAV_EPISODE' ? { frameId: 0 } : {};
+        chrome.tabs.sendMessage(sender.tab.id, message, options);
     }
     return false; 
+});
+
+chrome.commands.onCommand.addListener((command, tab) => {
+    if (command !== 'insert-feishu-dollars' || !tab?.id) return;
+
+    chrome.tabs.sendMessage(tab.id, { type: 'OPEN_FEISHU_FORMULA', source: 'command' }, () => {
+        if (chrome.runtime.lastError) {
+            console.warn('[yukonChromeExtension] open Feishu formula command failed:', chrome.runtime.lastError.message);
+        }
+    });
 });
 
 // Function to apply proxy settings based on mode
