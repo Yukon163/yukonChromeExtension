@@ -693,16 +693,55 @@ chrome.storage.sync.get({
 
     // --- 超级复制功能 ---
     function initSuperCopy() {
+        const isFeishuPage = /(^|\.)(feishu\.cn|larksuite\.com|larkoffice\.com)$/i.test(location.hostname);
         // 只拦截关键的复制保护事件，移除 mousedown/mouseup 以免干扰播放器控制
         const events = ['copy', 'cut', 'paste', 'selectstart', 'contextmenu', 'dragstart'];
+
+        const writeFeishuSelection = (event) => {
+            if (!isFeishuPage || event.type !== 'copy' || !event.clipboardData) return;
+
+            const selection = window.getSelection?.();
+            if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+
+            try {
+                const container = document.createElement('div');
+                for (let index = 0; index < selection.rangeCount; index += 1) {
+                    container.appendChild(selection.getRangeAt(index).cloneContents());
+                }
+
+                const text = selection.toString();
+                const html = container.innerHTML;
+                if (!text && !html) return;
+
+                event.clipboardData.clearData();
+                event.clipboardData.setData('text/plain', text);
+                if (html) event.clipboardData.setData('text/html', html);
+                event.preventDefault();
+            } catch (error) {
+                console.debug('[yukonChromeExtension] 飞书选区复制兜底失败:', error);
+            }
+        };
+
         const handler = (e) => {
+            writeFeishuSelection(e);
             e.stopPropagation();
             e.stopImmediatePropagation();
             return true;
         };
 
         const cssId = 'cyc-super-copy-css';
+        const nullifier = () => true;
+        const originalDocumentHandlers = {
+            oncontextmenu: document.oncontextmenu,
+            onselectstart: document.onselectstart,
+            oncopy: document.oncopy
+        };
+        let enabled = false;
+
         const enable = () => {
+            if (enabled) return;
+            enabled = true;
+
             // 1. 强制注入 CSS 允许选择
             if (!document.getElementById(cssId)) {
                 const style = document.createElement('style');
@@ -725,15 +764,17 @@ chrome.storage.sync.get({
             });
 
             // 3. 覆盖 document 上的原生处理器
-            const nullifier = () => true;
             document.oncontextmenu = nullifier;
             document.onselectstart = nullifier;
-            document.oncopy = nullifier;
+            if (!isFeishuPage) document.oncopy = nullifier;
             
             console.log('[yukonChromeExtension] 超级复制模式已激活');
         };
 
         const disable = () => {
+            if (!enabled) return;
+            enabled = false;
+
             const style = document.getElementById(cssId);
             if (style) style.remove();
 
@@ -741,6 +782,10 @@ chrome.storage.sync.get({
                 document.removeEventListener(evt, handler, true);
                 window.removeEventListener(evt, handler, true);
             });
+
+            for (const [property, original] of Object.entries(originalDocumentHandlers)) {
+                if (document[property] === nullifier) document[property] = original;
+            }
             console.log('[yukonChromeExtension] 超级复制模式已关闭');
         };
 
@@ -793,13 +838,13 @@ chrome.storage.sync.get({
     async function start() {
         initDarkMode(); // 暗色模式作用于所有可注入页面，不受视频白名单限制
         initFeishuDollarShortcut(); // 飞书云文档快捷输入不受视频白名单限制
+        initSuperCopy(); // 超级复制作用于所有可注入页面，不受视频白名单限制
 
         const allowed = await checkPermission();
         if (!allowed) return;
 
         console.log('[yukonChromeExtension] 插件已在当前页面激活');
         
-        initSuperCopy(); // 启动超级复制功能
         initAutoHideMouse(); // 启动自动隐藏鼠标功能
         cleanupUI();
         observeUI(); // 开启持续监听

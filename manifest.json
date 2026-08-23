@@ -1,9 +1,14 @@
 {
   "manifest_version": 3,
   "name": "yukonChromeExtension",
-  "version": "1.1",
+  "version": "1.2.1",
   "description": "Yukon 专属浏览器助手：支持视频倍速控制、代理切换、超级复制与强制暗色模式",
-  "permissions": ["activeTab", "storage", "proxy"],
+  "permissions": ["activeTab", "storage", "proxy", "scripting"],
+  "host_permissions": [
+    "*://*.feishu.cn/*",
+    "*://*.larksuite.com/*",
+    "*://*.larkoffice.com/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

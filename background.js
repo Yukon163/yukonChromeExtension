@@ -1,3 +1,46 @@
+const FEISHU_COPY_SCRIPT_ID = 'yukon-feishu-copy-permission';
+const FEISHU_COPY_SCRIPT = {
+    id: FEISHU_COPY_SCRIPT_ID,
+    matches: [
+        '*://*.feishu.cn/*',
+        '*://*.larksuite.com/*',
+        '*://*.larkoffice.com/*'
+    ],
+    js: ['feishu-copy.js'],
+    allFrames: true,
+    runAt: 'document_start',
+    world: 'MAIN',
+    persistAcrossSessions: true
+};
+let feishuCopySyncQueue = Promise.resolve();
+
+function syncFeishuCopyScript(enabled) {
+    const shouldEnable = Boolean(enabled);
+
+    feishuCopySyncQueue = feishuCopySyncQueue.then(async () => {
+        const registered = await chrome.scripting.getRegisteredContentScripts({
+            ids: [FEISHU_COPY_SCRIPT_ID]
+        });
+        const isRegistered = registered.length > 0;
+
+        if (shouldEnable && !isRegistered) {
+            await chrome.scripting.registerContentScripts([FEISHU_COPY_SCRIPT]);
+        } else if (!shouldEnable && isRegistered) {
+            await chrome.scripting.unregisterContentScripts({ ids: [FEISHU_COPY_SCRIPT_ID] });
+        }
+    }).catch((error) => {
+        console.warn('[yukonChromeExtension] 同步飞书复制权限脚本失败:', error);
+    });
+
+    return feishuCopySyncQueue;
+}
+
+function syncFeishuCopyScriptFromStorage() {
+    chrome.storage.sync.get({ superCopy: false }, (items) => {
+        syncFeishuCopyScript(Boolean(items.superCopy));
+    });
+}
+
 // Listen for messages from content scripts and relay them to all frames in the same tab
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if ((message.type === 'NAV_EPISODE' || message.type === 'SYNC_SPEED') && sender.tab) {
@@ -51,6 +94,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'sync' && changes.proxyMode) {
         updateProxySettings(changes.proxyMode.newValue);
     }
+    if (area === 'sync' && changes.superCopy) {
+        syncFeishuCopyScript(Boolean(changes.superCopy.newValue));
+    }
 });
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -71,4 +117,8 @@ chrome.runtime.onInstalled.addListener(() => {
             chrome.storage.sync.set({ whitelist: list });
         }
     });
+
+    syncFeishuCopyScriptFromStorage();
 });
+
+chrome.runtime.onStartup.addListener(syncFeishuCopyScriptFromStorage);
