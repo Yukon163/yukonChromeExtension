@@ -162,6 +162,8 @@
     installXhrHook();
     installFetchHook();
 
+    console.log('[yukonChromeExtension] 飞书复制权限钩子已安装');
+
     // 权限接口或页面结构再次变化时，仍保证普通 DOM 选区可以复制。
     window.addEventListener('copy', forceSelectionCopy, true);
 })();

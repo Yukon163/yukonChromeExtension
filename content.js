@@ -694,36 +694,15 @@ chrome.storage.sync.get({
     // --- 超级复制功能 ---
     function initSuperCopy() {
         const isFeishuPage = /(^|\.)(feishu\.cn|larksuite\.com|larkoffice\.com)$/i.test(location.hostname);
-        // 只拦截关键的复制保护事件，移除 mousedown/mouseup 以免干扰播放器控制
-        const events = ['copy', 'cut', 'paste', 'selectstart', 'contextmenu', 'dragstart'];
-
-        const writeFeishuSelection = (event) => {
-            if (!isFeishuPage || event.type !== 'copy' || !event.clipboardData) return;
-
-            const selection = window.getSelection?.();
-            if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-
-            try {
-                const container = document.createElement('div');
-                for (let index = 0; index < selection.rangeCount; index += 1) {
-                    container.appendChild(selection.getRangeAt(index).cloneContents());
-                }
-
-                const text = selection.toString();
-                const html = container.innerHTML;
-                if (!text && !html) return;
-
-                event.clipboardData.clearData();
-                event.clipboardData.setData('text/plain', text);
-                if (html) event.clipboardData.setData('text/html', html);
-                event.preventDefault();
-            } catch (error) {
-                console.debug('[yukonChromeExtension] 飞书选区复制兜底失败:', error);
-            }
-        };
+        // 飞书使用自定义选区和自己的 copy/paste handler 生成富文本剪贴板。
+        // 在隔离世界里抢占这些事件会让飞书只能复制出隐藏 textarea 里的空格。
+        // 飞书页面只注入可选中 CSS；复制权限与普通 DOM 兜底由 document_start
+        // 注册到 MAIN world 的 feishu-copy.js 负责。
+        const events = isFeishuPage
+            ? []
+            : ['copy', 'cut', 'paste', 'selectstart', 'contextmenu', 'dragstart'];
 
         const handler = (e) => {
-            writeFeishuSelection(e);
             e.stopPropagation();
             e.stopImmediatePropagation();
             return true;
