@@ -2,7 +2,10 @@
     'use strict';
 
     const HOOK_FLAG = '__yukonFeishuCopyPermissionHooked__';
-    const PERMISSION_ENDPOINT = /\/space\/api\/[^?#]*permission\/document\/actions\/state\/?/i;
+    const PERMISSION_ENDPOINTS = [
+        /\/space\/api\/[^?#]*permission\/document\/actions\/state\/?/i,
+        /\/base\/ssr\/header(?:[/?#]|$)/i
+    ];
 
     if (window[HOOK_FLAG]) return;
 
@@ -14,15 +17,32 @@
     });
 
     function isPermissionRequest(url) {
-        return PERMISSION_ENDPOINT.test(String(url || ''));
+        const requestUrl = String(url || '');
+        return PERMISSION_ENDPOINTS.some((pattern) => pattern.test(requestUrl));
+    }
+
+    function isBitablePage() {
+        return /^\/(?:base|app)\//i.test(location.pathname);
     }
 
     function unlockCopyAction(actions) {
         if (!actions || typeof actions !== 'object') return false;
-        if (actions.copy === 1 || actions.copy === true) return false;
 
-        actions.copy = 1;
-        return true;
+        let modified = false;
+
+        if (actions.copy !== 1 && actions.copy !== true) {
+            actions.copy = 1;
+            modified = true;
+        }
+
+        // Base 的网格剪贴板同时要求 contentCopy 与 export。
+        // 文档页只需 copy；限定到 Base / AppMode，避免扩大普通文档能力。
+        if (isBitablePage() && actions.export !== 1 && actions.export !== true) {
+            actions.export = 1;
+            modified = true;
+        }
+
+        return modified;
     }
 
     function unlockCopyPermission(payload) {
@@ -35,8 +55,10 @@
             if (!node || typeof node !== 'object' || visited.has(node) || depth > 6) return;
             visited.add(node);
 
-            if (node.actions && typeof node.actions === 'object') {
-                modified = unlockCopyAction(node.actions) || modified;
+            for (const key of ['actions', 'Actions']) {
+                if (node[key] && typeof node[key] === 'object') {
+                    modified = unlockCopyAction(node[key]) || modified;
+                }
             }
 
             if (Array.isArray(node)) {
@@ -44,8 +66,10 @@
                 return;
             }
 
-            for (const key of ['data', 'permission', 'permissions', 'result']) {
-                visit(node[key], depth + 1);
+            // Base 首屏权限位于 data.__HEADER_PERMS__.authPerm.Actions；
+            // 文档接口则通常位于 data.actions。权限响应内统一递归处理。
+            for (const value of Object.values(node)) {
+                visit(value, depth + 1);
             }
         }
 
@@ -85,6 +109,9 @@
                         Object.defineProperty(this, 'response', {
                             get: () => this.responseType === 'json' ? payload : serialized,
                             configurable: true
+                        });
+                        console.log('[yukonChromeExtension] 飞书复制权限已解锁', {
+                            bitable: isBitablePage()
                         });
                     } catch (error) {
                         console.debug('[yukonChromeExtension] 飞书 XHR 复制权限响应处理失败:', error);
