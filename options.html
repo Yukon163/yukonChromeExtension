@@ -115,6 +115,17 @@
         body.is-popup .module-card.hidden-in-popup {
             display: none !important;
         }
+        body.is-popup .module-card:not(#module-speed) .module-content,
+        body.is-popup .module-card:not(#module-speed) .arrow-icon {
+            display: none !important;
+        }
+        body.is-popup #module-speed .module-header,
+        body.is-popup .module-card.has-popup-action .module-header {
+            cursor: pointer;
+        }
+        body.is-popup .module-card:not(#module-speed):not(.has-popup-action) .module-header {
+            cursor: default;
+        }
         
         /* 向下箭头 (绿色框区域) */
         .arrow-icon {
@@ -182,6 +193,49 @@
         }
         .list-item:last-child { border-bottom: none; }
         .btn-del { color: #ff4d4f; background: transparent; padding: 0; }
+
+        .shortcut-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .shortcut-setting {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .shortcut-setting .option-info {
+            min-width: 0;
+        }
+        .shortcut-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+        }
+        input[type="text"].shortcut-input {
+            width: 132px;
+            flex: 0 0 132px;
+            box-sizing: border-box;
+            text-align: center;
+            cursor: pointer;
+            caret-color: transparent;
+        }
+        input[type="text"].shortcut-input.is-recording {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(0, 174, 236, 0.15);
+        }
+        .btn-secondary {
+            background: #333;
+            color: var(--text-main);
+        }
+        .shortcut-help {
+            margin: 14px 0 0;
+            color: var(--text-dim);
+            font-size: 11px;
+            line-height: 1.6;
+        }
 
         /* iOS 开关样式 */
         .switch {
@@ -400,7 +454,7 @@
                 <label class="proxy-option">
                     <div class="option-info">
                         <span class="option-title">启用超级复制</span>
-                        <span class="option-desc">解锁网页右键限制，强制允许复制粘贴</span>
+                        <span class="option-desc">解锁网页右键与选择限制；飞书会同步解除前端复制权限（切换后刷新飞书页面）</span>
                     </div>
                     <label class="switch">
                         <input type="checkbox" id="super-copy-toggle">
@@ -436,7 +490,43 @@
             </div>
         </div>
 
-        <!-- 模块 5: CSDN 优化模块 -->
+        <!-- 模块 5: 飞书公式快捷键 -->
+        <div class="module-card hidden-in-popup" id="module-shortcuts">
+            <div class="module-header">
+                <div class="module-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9h.01M11 9h.01M15 9h.01M17 13H7"></path></svg>
+                    飞书公式快捷键
+                </div>
+                <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="module-content">
+                <div class="shortcut-list">
+                    <div class="shortcut-setting">
+                        <div class="option-info">
+                            <span class="option-title">输入公式块</span>
+                            <span class="option-desc">在光标处输入 $$$$</span>
+                        </div>
+                        <div class="shortcut-control">
+                            <input type="text" class="shortcut-input" id="shortcut-open-formula" data-action="openFormula" aria-label="输入公式块快捷键" autocomplete="off" spellcheck="false" readonly>
+                            <button type="button" class="btn-secondary shortcut-reset" data-action="openFormula">重置</button>
+                        </div>
+                    </div>
+                    <div class="shortcut-setting">
+                        <div class="option-info">
+                            <span class="option-title">居中并输入公式块</span>
+                            <span class="option-desc">先执行 Ctrl+Shift+E，再输入 $$$$</span>
+                        </div>
+                        <div class="shortcut-control">
+                            <input type="text" class="shortcut-input" id="shortcut-center-formula" data-action="centerAndOpenFormula" aria-label="居中并输入公式块快捷键" autocomplete="off" spellcheck="false" readonly>
+                            <button type="button" class="btn-secondary shortcut-reset" data-action="centerAndOpenFormula">重置</button>
+                        </div>
+                    </div>
+                </div>
+                <p class="shortcut-help" id="shortcut-message">点击输入框后直接按下组合键即可保存；按 Esc 取消。建议至少包含 Ctrl、Alt 或 Command。Chrome 保留的组合键还需在 chrome://extensions/shortcuts 中修改扩展快捷键。</p>
+            </div>
+        </div>
+
+        <!-- 模块 6: CSDN 优化模块 -->
         <div class="module-card" id="module-csdn">
             <div class="module-header">
                 <div class="module-title">
@@ -462,7 +552,7 @@
             </div>
         </div>
 
-        <!-- 模块 6: 功能显示管理 (仅在设置页可见) -->
+        <!-- 模块 7: 功能显示管理 (仅在设置页可见) -->
         <div class="module-card" id="module-settings">
             <div class="module-header">
                 <div class="module-title">

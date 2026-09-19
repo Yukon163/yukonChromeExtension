@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "yukonChromeExtension",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Yukon 专属浏览器助手：支持视频倍速控制、代理切换、超级复制与强制暗色模式",
   "permissions": ["activeTab", "storage", "proxy", "scripting"],
   "host_permissions": [
@@ -24,6 +24,13 @@
         "mac": "Command+4"
       },
       "description": "在飞书云文档打开 LaTeX 公式块"
+    },
+    "center-and-insert-feishu-dollars": {
+      "suggested_key": {
+        "default": "Ctrl+5",
+        "mac": "Command+5"
+      },
+      "description": "在飞书云文档居中当前行并打开 LaTeX 公式块"
     }
   },
   "content_scripts": [

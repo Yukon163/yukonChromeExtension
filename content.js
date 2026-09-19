@@ -10,9 +10,15 @@
     const FEISHU_FORMULA_DOLLARS_FIRST = '$$$';
     const FEISHU_FORMULA_DOLLARS_LAST = '$';
     const FEISHU_FORMULA_DOLLAR_PAUSE = 35;
+    const FEISHU_CENTER_SHORTCUT_PAUSE = 80;
+    const DEFAULT_FEISHU_FORMULA_SHORTCUTS = Object.freeze({
+        openFormula: 'Ctrl+4',
+        centerAndOpenFormula: 'Ctrl+5'
+    });
     const FEISHU_DOC_PATH_PATTERN = /^\/(?:docx|docs|wiki|sheets|base|mindnotes|mindnote|slides|file|drive|space|minutes)\//;
     let lastFeishuFormulaOpenAt = 0;
     let isOpeningFeishuFormula = false;
+    let feishuFormulaShortcuts = { ...DEFAULT_FEISHU_FORMULA_SHORTCUTS };
 
     // 深度搜索所有 Shadow DOM 寻找 video
     function findVideoRecursively(root) {
@@ -190,7 +196,7 @@ chrome.storage.sync.get({
             handleSyncSpeed(msg);
         } else if (msg.type === 'OPEN_FEISHU_FORMULA') {
             if (isFeishuDocPage() && (msg.source !== 'command' || hasFeishuEditingFocus())) {
-                openFeishuFormulaBlock();
+                openFeishuFormulaBlock({ centerLine: Boolean(msg.centerLine) });
             }
         }
     });
@@ -227,7 +233,8 @@ chrome.storage.sync.get({
     function isFeishuDocPage() {
         const host = window.location.hostname.replace(/^www\./, '');
         const isFeishuHost = host === 'feishu.cn' || host.endsWith('.feishu.cn') ||
-            host === 'larksuite.com' || host.endsWith('.larksuite.com');
+            host === 'larksuite.com' || host.endsWith('.larksuite.com') ||
+            host === 'larkoffice.com' || host.endsWith('.larkoffice.com');
 
         if (!isFeishuHost) return false;
 
@@ -414,6 +421,34 @@ chrome.storage.sync.get({
         }));
     }
 
+    function dispatchCenterShortcut() {
+        const target = getTextInputTarget() || getDeepActiveElement() || document;
+        if (!target) return false;
+
+        const init = {
+            key: 'e',
+            code: 'KeyE',
+            ctrlKey: true,
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+            composed: true
+        };
+        const keydownHandled = !target.dispatchEvent(new KeyboardEvent('keydown', init));
+
+        target.dispatchEvent(new KeyboardEvent('keyup', init));
+
+        if (!keydownHandled) {
+            try {
+                return Boolean(document.execCommand('justifyCenter', false));
+            } catch (e) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     function typeCharacterLikeKeyboard(char) {
         const target = getTextInputTarget();
         const { keydownPrevented, keypressPrevented, beforeInputPrevented } = dispatchTextInputEvents(target, char);
@@ -454,7 +489,7 @@ chrome.storage.sync.get({
         return inserted;
     }
 
-    async function openFeishuFormulaBlock() {
+    async function openFeishuFormulaBlock({ centerLine = false } = {}) {
         const now = Date.now();
         if (isOpeningFeishuFormula || now - lastFeishuFormulaOpenAt < 300) return false;
 
@@ -462,6 +497,10 @@ chrome.storage.sync.get({
         lastFeishuFormulaOpenAt = now;
 
         try {
+            if (centerLine) {
+                dispatchCenterShortcut();
+                await wait(FEISHU_CENTER_SHORTCUT_PAUSE);
+            }
             await typeTextAtCursor(FEISHU_FORMULA_DOLLARS_FIRST);
             await wait(FEISHU_FORMULA_DOLLAR_PAUSE);
             return typeTextAtCursor(FEISHU_FORMULA_DOLLARS_LAST);
@@ -470,19 +509,87 @@ chrome.storage.sync.get({
         }
     }
 
+    function getShortcutEventKey(e) {
+        if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3);
+        if (/^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
+
+        const codeKeys = {
+            Space: 'Space',
+            Slash: '/',
+            Backslash: '\\',
+            BracketLeft: '[',
+            BracketRight: ']',
+            Semicolon: ';',
+            Quote: "'",
+            Comma: ',',
+            Period: '.',
+            Minus: '-',
+            Equal: '=',
+            ArrowUp: 'ArrowUp',
+            ArrowDown: 'ArrowDown',
+            ArrowLeft: 'ArrowLeft',
+            ArrowRight: 'ArrowRight'
+        };
+
+        return codeKeys[e.code] || (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    }
+
+    function shortcutFromKeyboardEvent(e) {
+        const key = getShortcutEventKey(e);
+        if (!key || ['Control', 'Shift', 'Alt', 'Meta'].includes(key)) return '';
+
+        const parts = [];
+        if (e.ctrlKey) parts.push('Ctrl');
+        if (e.altKey) parts.push('Alt');
+        if (e.shiftKey) parts.push('Shift');
+        if (e.metaKey) parts.push('Meta');
+        parts.push(key);
+        return parts.join('+');
+    }
+
+    function normalizeFeishuFormulaShortcuts(value) {
+        if (!value || typeof value !== 'object') {
+            return { ...DEFAULT_FEISHU_FORMULA_SHORTCUTS };
+        }
+
+        return {
+            openFormula: typeof value.openFormula === 'string' && value.openFormula
+                ? value.openFormula
+                : DEFAULT_FEISHU_FORMULA_SHORTCUTS.openFormula,
+            centerAndOpenFormula: typeof value.centerAndOpenFormula === 'string' && value.centerAndOpenFormula
+                ? value.centerAndOpenFormula
+                : DEFAULT_FEISHU_FORMULA_SHORTCUTS.centerAndOpenFormula
+        };
+    }
+
     function initFeishuDollarShortcut() {
         if (!isFeishuDocPage()) return;
 
+        chrome.storage.sync.get({
+            feishuFormulaShortcuts: DEFAULT_FEISHU_FORMULA_SHORTCUTS
+        }, (items) => {
+            feishuFormulaShortcuts = normalizeFeishuFormulaShortcuts(items.feishuFormulaShortcuts);
+        });
+
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'sync' && changes.feishuFormulaShortcuts) {
+                feishuFormulaShortcuts = normalizeFeishuFormulaShortcuts(changes.feishuFormulaShortcuts.newValue);
+            }
+        });
+
         window.addEventListener('keydown', (e) => {
-            if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.repeat) return;
-            if (e.code !== 'Digit4' && e.key !== '4') return;
+            if (e.repeat || !e.isTrusted) return;
+
+            const shortcut = shortcutFromKeyboardEvent(e);
+            const centerLine = shortcut === feishuFormulaShortcuts.centerAndOpenFormula;
+            if (!centerLine && shortcut !== feishuFormulaShortcuts.openFormula) return;
 
             e.preventDefault();
             e.stopImmediatePropagation();
-            openFeishuFormulaBlock();
+            openFeishuFormulaBlock({ centerLine });
         }, true);
 
-        console.log('[yukonChromeExtension] 飞书云文档 Ctrl+4 公式块快捷输入已激活');
+        console.log('[yukonChromeExtension] 飞书云文档公式块快捷输入已激活');
     }
 
     function executeNavigation(direction) {

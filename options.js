@@ -24,8 +24,97 @@ function showStatus(msg) {
     }, 2000);
 }
 
+const popupCardActions = {};
+const DEFAULT_FEISHU_FORMULA_SHORTCUTS = Object.freeze({
+    openFormula: 'Ctrl+4',
+    centerAndOpenFormula: 'Ctrl+5'
+});
+const SHORTCUT_HELP_TEXT = '点击输入框后直接按下组合键即可保存；按 Esc 取消。建议至少包含 Ctrl、Alt 或 Command。Chrome 保留的组合键还需在 chrome://extensions/shortcuts 中修改扩展快捷键。';
+
+function registerPopupCardAction(moduleId, action) {
+    popupCardActions[moduleId] = action;
+}
+
+function initPopupCardActions() {
+    if (!isPopup) return;
+
+    Object.entries(popupCardActions).forEach(([moduleId, action]) => {
+        const card = document.getElementById(moduleId);
+        if (!card) return;
+
+        card.classList.add('has-popup-action');
+        card.addEventListener('click', (e) => {
+            if (e.target.closest('a, button, input, textarea, select')) return;
+            action();
+        });
+    });
+}
+
+function getShortcutEventKey(e) {
+    if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3);
+    if (/^Digit[0-9]$/.test(e.code)) return e.code.slice(5);
+
+    const codeKeys = {
+        Space: 'Space',
+        Slash: '/',
+        Backslash: '\\',
+        BracketLeft: '[',
+        BracketRight: ']',
+        Semicolon: ';',
+        Quote: "'",
+        Comma: ',',
+        Period: '.',
+        Minus: '-',
+        Equal: '=',
+        ArrowUp: 'ArrowUp',
+        ArrowDown: 'ArrowDown',
+        ArrowLeft: 'ArrowLeft',
+        ArrowRight: 'ArrowRight'
+    };
+
+    return codeKeys[e.code] || (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+}
+
+function shortcutFromKeyboardEvent(e) {
+    const key = getShortcutEventKey(e);
+    if (!key || ['Control', 'Shift', 'Alt', 'Meta'].includes(key)) return '';
+
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Meta');
+    parts.push(key);
+    return parts.join('+');
+}
+
+function normalizeFeishuFormulaShortcuts(value) {
+    if (!value || typeof value !== 'object') {
+        return { ...DEFAULT_FEISHU_FORMULA_SHORTCUTS };
+    }
+
+    return {
+        openFormula: typeof value.openFormula === 'string' && value.openFormula
+            ? value.openFormula
+            : DEFAULT_FEISHU_FORMULA_SHORTCUTS.openFormula,
+        centerAndOpenFormula: typeof value.centerAndOpenFormula === 'string' && value.centerAndOpenFormula
+            ? value.centerAndOpenFormula
+            : DEFAULT_FEISHU_FORMULA_SHORTCUTS.centerAndOpenFormula
+    };
+}
+
 // --- 手风琴逻辑 ---
 function initAccordion() {
+    if (isPopup) {
+        const speedHeader = document.querySelector('#module-speed .module-header');
+        if (!speedHeader) return;
+
+        speedHeader.addEventListener('click', () => {
+            speedHeader.parentElement.classList.toggle('active');
+        });
+        return;
+    }
+
     document.querySelectorAll('.module-header').forEach(header => {
         header.addEventListener('click', () => {
             const card = header.parentElement;
@@ -109,33 +198,35 @@ function initProxyModule() {
         updateBadge(items.proxyMode);
     });
 
-    // 快捷切换状态
-    badge.addEventListener('click', (e) => {
-        e.stopPropagation(); // 阻止手风琴折叠
-        const newMode = badge.textContent === '系统' ? 'direct' : 'system';
+    function setProxyMode(newMode) {
         chrome.storage.sync.set({ proxyMode: newMode }, () => {
             systemToggle.checked = (newMode === 'system');
             directToggle.checked = (newMode === 'direct');
             updateBadge(newMode);
             showStatus(`已切换为: ${newMode === 'system' ? '系统代理' : '直连'}`);
         });
+    }
+
+    function toggleProxyMode() {
+        const newMode = badge.textContent === '系统' ? 'direct' : 'system';
+        setProxyMode(newMode);
+    }
+
+    // 快捷切换状态
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation(); // 阻止手风琴折叠
+        toggleProxyMode();
     });
 
     // 监听系统代理切换
     systemToggle.addEventListener('change', () => {
         if (systemToggle.checked) {
             directToggle.checked = false;
-            chrome.storage.sync.set({ proxyMode: 'system' }, () => {
-                updateBadge('system');
-                showStatus('已切换为: 系统代理');
-            });
+            setProxyMode('system');
         } else {
             // 如果关掉系统代理，强制打开直连
             directToggle.checked = true;
-            chrome.storage.sync.set({ proxyMode: 'direct' }, () => {
-                updateBadge('direct');
-                showStatus('已切换为: 直连');
-            });
+            setProxyMode('direct');
         }
     });
 
@@ -143,19 +234,15 @@ function initProxyModule() {
     directToggle.addEventListener('change', () => {
         if (directToggle.checked) {
             systemToggle.checked = false;
-            chrome.storage.sync.set({ proxyMode: 'direct' }, () => {
-                updateBadge('direct');
-                showStatus('已切换为: 直连');
-            });
+            setProxyMode('direct');
         } else {
             // 如果关掉直连，强制打开系统代理
             systemToggle.checked = true;
-            chrome.storage.sync.set({ proxyMode: 'system' }, () => {
-                updateBadge('system');
-                showStatus('已切换为: 系统代理');
-            });
+            setProxyMode('system');
         }
     });
+
+    registerPopupCardAction('module-proxy', toggleProxyMode);
 }
 
 // --- 超级复制模块逻辑 ---
@@ -178,24 +265,29 @@ function initCopyModule() {
         updateBadge(items.superCopy);
     });
 
+    function setSuperCopy(enabled) {
+        chrome.storage.sync.set({ superCopy: enabled }, () => {
+            toggle.checked = enabled;
+            updateBadge(enabled);
+            showStatus(enabled ? '超级复制已开启；飞书页面刷新后生效' : '超级复制已关闭；飞书页面刷新后完全关闭');
+        });
+    }
+
+    function toggleSuperCopy() {
+        setSuperCopy(!toggle.checked);
+    }
+
     // 快捷切换状态
     badge.addEventListener('click', (e) => {
         e.stopPropagation(); // 阻止手风琴折叠
-        const newState = badge.textContent === '关闭';
-        chrome.storage.sync.set({ superCopy: newState }, () => {
-            toggle.checked = newState;
-            updateBadge(newState);
-            showStatus(newState ? '超级复制已开启' : '超级复制已关闭');
-        });
+        toggleSuperCopy();
     });
 
     toggle.addEventListener('change', () => {
-        const enabled = toggle.checked;
-        chrome.storage.sync.set({ superCopy: enabled }, () => {
-            updateBadge(enabled);
-            showStatus(enabled ? '超级复制已开启' : '超级复制已关闭');
-        });
+        setSuperCopy(toggle.checked);
     });
+
+    registerPopupCardAction('module-copy', toggleSuperCopy);
 }
 
 // --- 强制暗色模式模块逻辑 ---
@@ -218,23 +310,28 @@ function initDarkModeModule() {
         updateBadge(items.darkMode);
     });
 
-    badge.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const newState = badge.textContent === '已关闭';
-        chrome.storage.sync.set({ darkMode: newState }, () => {
-            toggle.checked = newState;
-            updateBadge(newState);
-            showStatus(newState ? '暗色模式已开启' : '暗色模式已关闭');
-        });
-    });
-
-    toggle.addEventListener('change', () => {
-        const enabled = toggle.checked;
+    function setDarkMode(enabled) {
         chrome.storage.sync.set({ darkMode: enabled }, () => {
+            toggle.checked = enabled;
             updateBadge(enabled);
             showStatus(enabled ? '暗色模式已开启' : '暗色模式已关闭');
         });
+    }
+
+    function toggleDarkMode() {
+        setDarkMode(!toggle.checked);
+    }
+
+    badge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDarkMode();
     });
+
+    toggle.addEventListener('change', () => {
+        setDarkMode(toggle.checked);
+    });
+
+    registerPopupCardAction('module-dark', toggleDarkMode);
 }
 
 // --- CSDN 优化模块逻辑 ---
@@ -257,22 +354,137 @@ function initCsdnModule() {
         updateBadge(items.csdnOptimize);
     });
 
+    function setCsdnOptimize(enabled) {
+        chrome.storage.sync.set({ csdnOptimize: enabled }, () => {
+            toggle.checked = enabled;
+            updateBadge(enabled);
+            showStatus(enabled ? 'CSDN 优化已开启 (刷新生效)' : 'CSDN 优化已关闭 (刷新生效)');
+        });
+    }
+
+    function toggleCsdnOptimize() {
+        setCsdnOptimize(!toggle.checked);
+    }
+
     // 快捷切换状态
     badge.addEventListener('click', (e) => {
         e.stopPropagation();
-        const newState = badge.textContent === '已关闭';
-        chrome.storage.sync.set({ csdnOptimize: newState }, () => {
-            toggle.checked = newState;
-            updateBadge(newState);
-            showStatus(newState ? 'CSDN 优化已开启 (刷新生效)' : 'CSDN 优化已关闭 (刷新生效)');
-        });
+        toggleCsdnOptimize();
     });
 
     toggle.addEventListener('change', () => {
-        const enabled = toggle.checked;
-        chrome.storage.sync.set({ csdnOptimize: enabled }, () => {
-            updateBadge(enabled);
-            showStatus(enabled ? 'CSDN 优化已开启 (刷新生效)' : 'CSDN 优化已关闭 (刷新生效)');
+        setCsdnOptimize(toggle.checked);
+    });
+
+    registerPopupCardAction('module-csdn', toggleCsdnOptimize);
+}
+
+// --- 飞书公式快捷键模块逻辑 ---
+function initShortcutModule() {
+    const inputs = Array.from(document.querySelectorAll('.shortcut-input[data-action]'));
+    const resetButtons = Array.from(document.querySelectorAll('.shortcut-reset[data-action]'));
+    const message = document.getElementById('shortcut-message');
+    if (!inputs.length || !message) return;
+
+    let shortcuts = { ...DEFAULT_FEISHU_FORMULA_SHORTCUTS };
+    let messageTimer = null;
+
+    function render() {
+        inputs.forEach((input) => {
+            input.value = shortcuts[input.dataset.action] || '';
+        });
+    }
+
+    function showShortcutMessage(text, isError = false) {
+        clearTimeout(messageTimer);
+        message.textContent = text;
+        message.style.color = isError ? '#ff7875' : 'var(--accent-color)';
+
+        messageTimer = setTimeout(() => {
+            message.textContent = SHORTCUT_HELP_TEXT;
+            message.style.color = '';
+        }, 3000);
+    }
+
+    function saveShortcut(action, shortcut, input) {
+        const duplicateAction = Object.keys(shortcuts).find((key) => key !== action && shortcuts[key] === shortcut);
+        if (duplicateAction) {
+            showShortcutMessage('这个组合键已经分配给另一个公式操作', true);
+            input.value = shortcuts[action];
+            return;
+        }
+
+        shortcuts = { ...shortcuts, [action]: shortcut };
+        chrome.storage.sync.set({ feishuFormulaShortcuts: shortcuts }, () => {
+            render();
+            input.blur();
+            showShortcutMessage(`已保存快捷键：${shortcut}`);
+        });
+    }
+
+    chrome.storage.sync.get({
+        feishuFormulaShortcuts: DEFAULT_FEISHU_FORMULA_SHORTCUTS
+    }, (items) => {
+        shortcuts = normalizeFeishuFormulaShortcuts(items.feishuFormulaShortcuts);
+        render();
+    });
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'sync' && changes.feishuFormulaShortcuts) {
+            shortcuts = normalizeFeishuFormulaShortcuts(changes.feishuFormulaShortcuts.newValue);
+            render();
+        }
+    });
+
+    inputs.forEach((input) => {
+        input.addEventListener('focus', () => {
+            input.classList.add('is-recording');
+            input.value = '请按组合键…';
+        });
+
+        input.addEventListener('blur', () => {
+            input.classList.remove('is-recording');
+            input.value = shortcuts[input.dataset.action];
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (e.key === 'Escape') {
+                input.blur();
+                return;
+            }
+
+            const shortcut = shortcutFromKeyboardEvent(e);
+            if (!shortcut) return;
+
+            if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+                showShortcutMessage('快捷键至少需要 Ctrl、Alt 或 Command 中的一个修饰键', true);
+                return;
+            }
+
+            saveShortcut(input.dataset.action, shortcut, input);
+        });
+    });
+
+    resetButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const action = button.dataset.action;
+            const shortcut = DEFAULT_FEISHU_FORMULA_SHORTCUTS[action];
+            const duplicateAction = Object.keys(shortcuts).find((key) => key !== action && shortcuts[key] === shortcut);
+            if (duplicateAction) {
+                showShortcutMessage('默认组合键已分配给另一个公式操作，请先修改那个操作', true);
+                return;
+            }
+
+            shortcuts = { ...shortcuts, [action]: shortcut };
+            chrome.storage.sync.set({ feishuFormulaShortcuts: shortcuts }, () => {
+                render();
+                showShortcutMessage(`已恢复默认快捷键：${shortcut}`);
+            });
         });
     });
 }
@@ -323,7 +535,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initCopyModule();
     initDarkModeModule();
     initCsdnModule();
+    initShortcutModule();
     initSettingsModule();
+    initPopupCardActions();
 
     // 更多设置跳转
     const moreSettings = document.getElementById('more-settings');

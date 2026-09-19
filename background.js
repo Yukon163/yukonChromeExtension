@@ -53,9 +53,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.commands.onCommand.addListener((command, tab) => {
-    if (command !== 'insert-feishu-dollars' || !tab?.id) return;
+    if (!tab?.id) return;
 
-    chrome.tabs.sendMessage(tab.id, { type: 'OPEN_FEISHU_FORMULA', source: 'command' }, () => {
+    const commandMessages = {
+        'insert-feishu-dollars': {
+            type: 'OPEN_FEISHU_FORMULA',
+            source: 'command',
+            centerLine: false
+        },
+        'center-and-insert-feishu-dollars': {
+            type: 'OPEN_FEISHU_FORMULA',
+            source: 'command',
+            centerLine: true
+        }
+    };
+    const message = commandMessages[command];
+    if (!message) return;
+
+    chrome.tabs.sendMessage(tab.id, message, () => {
         if (chrome.runtime.lastError) {
             console.warn('[yukonChromeExtension] open Feishu formula command failed:', chrome.runtime.lastError.message);
         }
