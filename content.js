@@ -11,6 +11,8 @@
     const FEISHU_FORMULA_DOLLARS_LAST = '$';
     const FEISHU_FORMULA_DOLLAR_PAUSE = 35;
     const FEISHU_CENTER_SHORTCUT_PAUSE = 80;
+    const FEISHU_ALIGNMENT_MENU_PAUSE = 150;
+    const FEISHU_CENTER_SHORTCUT_REQUEST_EVENT = 'yukon-feishu-center-shortcut-request';
     const DEFAULT_FEISHU_FORMULA_SHORTCUTS = Object.freeze({
         openFormula: 'Ctrl+4',
         centerAndOpenFormula: 'Ctrl+5'
@@ -421,29 +423,165 @@ chrome.storage.sync.get({
         }));
     }
 
-    function dispatchCenterShortcut() {
+    function getDeepElements(selector) {
+        const elements = [];
+        const roots = [document];
+
+        while (roots.length > 0) {
+            const root = roots.shift();
+            elements.push(...root.querySelectorAll(selector));
+
+            for (const el of root.querySelectorAll('*')) {
+                if (el.shadowRoot) roots.push(el.shadowRoot);
+            }
+        }
+
+        return elements;
+    }
+
+    function isVisibleUiElement(el) {
+        if (!el?.isConnected || el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+
+        const style = getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false;
+
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 &&
+            rect.bottom >= 0 && rect.right >= 0 &&
+            rect.top <= window.innerHeight && rect.left <= window.innerWidth;
+    }
+
+    function getUiElementLabels(el) {
+        const labels = [
+            el.getAttribute('aria-label'),
+            el.getAttribute('title'),
+            el.getAttribute('data-title'),
+            el.getAttribute('data-tooltip'),
+            el.getAttribute('data-tooltip-content'),
+            el.getAttribute('data-tip')
+        ];
+        const text = (el.innerText || el.textContent || '').trim();
+        if (text.length <= 40) labels.push(text);
+
+        const labelledBy = el.getAttribute('aria-labelledby');
+        if (labelledBy) {
+            const root = el.getRootNode();
+            for (const id of labelledBy.split(/\s+/)) {
+                const label = root.getElementById?.(id)?.textContent?.trim();
+                if (label) labels.push(label);
+            }
+        }
+
+        return labels.filter(Boolean).map(label =>
+            label.replace(/[\s_\-:：+()（）]/g, '').toLowerCase()
+        );
+    }
+
+    function findFeishuUiAction(labelPattern, { preferMenu = false } = {}) {
+        const selector = [
+            'button',
+            '[role="button"]',
+            '[role="menuitem"]',
+            '[role="option"]',
+            '[aria-label]',
+            '[title]',
+            '[data-title]',
+            '[data-tooltip]',
+            '[data-tooltip-content]'
+        ].join(',');
+        const matches = getDeepElements(selector).filter((el) =>
+            isVisibleUiElement(el) && getUiElementLabels(el).some(label => labelPattern.test(label))
+        );
+
+        matches.sort((a, b) => {
+            const score = (el) => {
+                let value = 0;
+                const role = el.getAttribute('role');
+                const isMenuItem = role === 'menuitem' || role === 'option';
+                const isInsideMenu = Boolean(el.closest('[role="menu"], [role="listbox"]'));
+                const hasPopup = Boolean(el.getAttribute('aria-haspopup'));
+                const isInsideToolbar = Boolean(el.closest('[role="toolbar"], [class*="toolbar"]'));
+
+                if (preferMenu) {
+                    if (isMenuItem) value += 8;
+                    if (isInsideMenu) value += 6;
+                } else {
+                    if (hasPopup) value += 8;
+                    if (isInsideToolbar) value += 6;
+                    if (isMenuItem || isInsideMenu) value -= 8;
+                }
+                if (el.tagName === 'BUTTON') value += 1;
+                return value;
+            };
+            return score(b) - score(a);
+        });
+
+        return matches[0] || null;
+    }
+
+    function dispatchUiClick(el) {
+        if (!el) return false;
+
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        const rect = el.getBoundingClientRect();
+        const init = {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            view: window,
+            button: 0,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2
+        };
+
+        if (typeof PointerEvent === 'function') {
+            el.dispatchEvent(new PointerEvent('pointerdown', { ...init, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        }
+        el.dispatchEvent(new MouseEvent('mousedown', { ...init, buttons: 1 }));
+        if (typeof PointerEvent === 'function') {
+            el.dispatchEvent(new PointerEvent('pointerup', { ...init, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true }));
+        }
+        el.dispatchEvent(new MouseEvent('mouseup', { ...init, buttons: 0 }));
+        el.dispatchEvent(new MouseEvent('click', { ...init, buttons: 0, detail: 1 }));
+        return true;
+    }
+
+    async function clickFeishuCenterAlignment() {
+        const centerPattern = /^(居中|居中对齐|中间对齐|center|aligncenter|centeralign|centeralignment)(ctrlshifte)?$/;
+        const alignmentPattern = /^(?!.*(?:居中|center)).*(?:对齐|align|alignment).*$/;
+
+        const visibleCenterAction = findFeishuUiAction(centerPattern, { preferMenu: true });
+        if (visibleCenterAction) return dispatchUiClick(visibleCenterAction);
+
+        const alignmentMenu = findFeishuUiAction(alignmentPattern);
+        if (!dispatchUiClick(alignmentMenu)) return false;
+
+        await wait(FEISHU_ALIGNMENT_MENU_PAUSE);
+        return dispatchUiClick(findFeishuUiAction(centerPattern, { preferMenu: true }));
+    }
+
+    async function dispatchCenterShortcut() {
         const target = getTextInputTarget() || getDeepActiveElement() || document;
         if (!target) return false;
 
-        const init = {
-            key: 'e',
-            code: 'KeyE',
-            ctrlKey: true,
-            shiftKey: true,
+        // 让 MAIN world 中的桥接脚本创建 KeyboardEvent，确保飞书读取到的
+        // key / keyCode / which 与真实 Ctrl+Shift+E 一致。
+        const request = new CustomEvent(FEISHU_CENTER_SHORTCUT_REQUEST_EVENT, {
             bubbles: true,
             cancelable: true,
             composed: true
-        };
-        const keydownHandled = !target.dispatchEvent(new KeyboardEvent('keydown', init));
+        });
+        const keydownHandled = !target.dispatchEvent(request) || request.defaultPrevented;
 
-        target.dispatchEvent(new KeyboardEvent('keyup', init));
+        console.debug('[yukonChromeExtension] 已派发飞书居中快捷键', {
+            handledByFeishu: keydownHandled,
+            target
+        });
 
         if (!keydownHandled) {
-            try {
-                return Boolean(document.execCommand('justifyCenter', false));
-            } catch (e) {
-                return false;
-            }
+            const clicked = await clickFeishuCenterAlignment();
+            console.debug('[yukonChromeExtension] 飞书未接管居中快捷键，已尝试点击居中控件', { clicked });
+            return clicked;
         }
 
         return true;
@@ -498,7 +636,7 @@ chrome.storage.sync.get({
 
         try {
             if (centerLine) {
-                dispatchCenterShortcut();
+                await dispatchCenterShortcut();
                 await wait(FEISHU_CENTER_SHORTCUT_PAUSE);
             }
             await typeTextAtCursor(FEISHU_FORMULA_DOLLARS_FIRST);

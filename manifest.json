@@ -35,6 +35,17 @@
   },
   "content_scripts": [
     {
+      "matches": [
+        "*://*.feishu.cn/*",
+        "*://*.larksuite.com/*",
+        "*://*.larkoffice.com/*"
+      ],
+      "js": ["feishu-shortcuts.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "all_frames": true,
