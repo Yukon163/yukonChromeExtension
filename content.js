@@ -873,6 +873,40 @@ chrome.storage.sync.get({
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
+    // 固定飞书标题栏的保存提示；在浏览器绘制前恢复文字，避免保存状态反复闪烁。
+    function initFeishuSaveStatus() {
+        if (!isFeishuDocPage()) return;
+
+        const selector = '.note-title__time';
+        const savedText = '已经保存到云端';
+        const fixStatus = (element) => {
+            if (element.textContent !== savedText) element.textContent = savedText;
+        };
+        const fixAddedNode = (node) => {
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+            if (node.matches(selector)) fixStatus(node);
+            node.querySelectorAll(selector).forEach(fixStatus);
+        };
+
+        document.querySelectorAll(selector).forEach(fixStatus);
+
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                const element = mutation.target.nodeType === Node.ELEMENT_NODE
+                    ? mutation.target
+                    : mutation.target.parentElement;
+                const status = element && element.closest(selector);
+                if (status) fixStatus(status);
+                mutation.addedNodes.forEach(fixAddedNode);
+            }
+        });
+        observer.observe(document.documentElement, {
+            childList: true,
+            characterData: true,
+            subtree: true
+        });
+    }
+
     // --- 强制暗色模式 ---
     function initDarkMode() {
         const cssId = 'yukon-force-dark-mode-css';
@@ -1060,6 +1094,7 @@ chrome.storage.sync.get({
     }
 
     async function start() {
+        initFeishuSaveStatus(); // 固定保存提示，不受视频白名单限制
         initDarkMode(); // 暗色模式作用于所有可注入页面，不受视频白名单限制
         initFeishuDollarShortcut(); // 飞书云文档快捷输入不受视频白名单限制
         initSuperCopy(); // 超级复制作用于所有可注入页面，不受视频白名单限制
