@@ -16,3 +16,7 @@ Thumbs.db
 node_modules/
 package-lock.json
 yarn.lock
+
+# Local login credentials
+*.cookies.json
+cookie-bridge-config.json

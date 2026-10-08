@@ -41,7 +41,9 @@
             width: 350px;
             min-height: 100px;
             display: block;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
+            max-height: 600px;
             transform: translateZ(0); /* 强制硬件加速，解决某些渲染溢出问题 */
         }
         body.is-popup .container {
@@ -235,6 +237,32 @@
             color: var(--text-dim);
             font-size: 11px;
             line-height: 1.6;
+        }
+
+        .cookie-detail {
+            font-size: 12px;
+            line-height: 1.6;
+            color: var(--text-dim);
+            overflow-wrap: anywhere;
+            user-select: text;
+        }
+        #cookie-export-status {
+            margin: 12px 0;
+        }
+        #cookie-export-auto-list {
+            margin-top: 12px;
+        }
+        #module-cookie-export.active .module-content {
+            max-height: 700px;
+        }
+        .cookie-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        button:disabled {
+            opacity: 0.55;
+            cursor: wait;
         }
 
         /* iOS 开关样式 */
@@ -552,7 +580,46 @@
             </div>
         </div>
 
-        <!-- 模块 7: 功能显示管理 (仅在设置页可见) -->
+        <div class="module-card" id="module-cookie-export">
+            <div class="module-header">
+                <div class="module-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m-4-4 4 4 4-4M5 17v4h14v-4"></path></svg>
+                    Cookie 导出
+                </div>
+                <div class="header-right">
+                    <button type="button" class="status-badge" id="cookie-export-quick" title="导出当前网站的 Cookie">导出当前网站</button>
+                    <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+            </div>
+            <div class="module-content">
+                <div class="input-group">
+                    <input type="text" id="cookie-export-domain" aria-label="Cookie 导出域名" placeholder="输入域名或网址，如 juejin.cn" autocomplete="off" spellcheck="false">
+                    <button type="button" id="cookie-export-now">立即导出</button>
+                </div>
+                <label class="proxy-option">
+                    <div class="option-info">
+                        <span class="option-title">自动更新这个网站</span>
+                        <span class="option-desc">开启后立即保存，Cookie 变化和 Chrome 启动时更新</span>
+                    </div>
+                    <span class="switch">
+                        <input type="checkbox" id="cookie-export-auto" aria-label="自动更新这个网站的 Cookie">
+                        <span class="slider"></span>
+                    </span>
+                </label>
+                <p class="cookie-detail">直接保存到系统临时目录下的 <code>yukonChromeExtension/cookies/域名.cookies.json</code>，每次覆盖更新，不弹出位置选择框。</p>
+                <p class="cookie-detail" id="cookie-export-status" role="status">尚未导出。</p>
+                <div class="cookie-actions">
+                    <button type="button" class="btn-secondary" id="cookie-export-show-file">显示文件</button>
+                    <button type="button" class="btn-secondary" id="cookie-export-open-folder">打开导出目录</button>
+                    <button type="button" class="btn-secondary" id="cookie-mcp-connect">连接 MCP 桥接</button>
+                </div>
+                <p class="cookie-detail" id="cookie-mcp-status" role="status">MCP 桥接尚未连接。</p>
+                <div class="list-box" id="cookie-export-auto-list" aria-label="自动导出网站列表"></div>
+                <p class="shortcut-help">文件含登录凭据，请保存在个人目录。导出只写入本机文件。</p>
+            </div>
+        </div>
+
+        <!-- 功能显示管理 (仅在设置页可见) -->
         <div class="module-card" id="module-settings">
             <div class="module-header">
                 <div class="module-title">

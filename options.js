@@ -489,6 +489,155 @@ function initShortcutModule() {
     });
 }
 
+// --- 通用 Cookie 本地导出 ---
+function initCookieExportModule() {
+    const input = document.getElementById('cookie-export-domain');
+    const toggle = document.getElementById('cookie-export-auto');
+    const status = document.getElementById('cookie-export-status');
+    const autoList = document.getElementById('cookie-export-auto-list');
+    const nowButton = document.getElementById('cookie-export-now');
+    const quickButton = document.getElementById('cookie-export-quick');
+    let state;
+
+    function request(message) {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage(message, response => {
+                if (chrome.runtime.lastError || !response?.ok) {
+                    reject(new Error(response?.error || '请在扩展管理页重新加载扩展后再试'));
+                } else resolve(response);
+            });
+        });
+    }
+
+    function domainFromInput() {
+        const value = input.value.trim();
+        if (!value) throw new Error('请输入网站域名或网址');
+        const url = new URL(value.includes('://') ? value : `https://${value}`);
+        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+            throw new Error('请输入 HTTP/HTTPS 网站的域名或网址');
+        }
+        return url.hostname.toLowerCase().replace(/\.$/, '');
+    }
+
+    function reportError(error) {
+        status.textContent = error.message;
+        showStatus(error.message);
+    }
+
+    function render() {
+        if (!state) return;
+        let domain;
+        try { domain = domainFromInput(); } catch { toggle.checked = false; return; }
+        toggle.checked = state.cookieExportAutoSites.includes(domain);
+        const file = state.cookieExportFiles[domain];
+        const phase = state.cookieExportStatuses[domain];
+        if (phase?.phase === 'saving') status.textContent = '正在保存本地文件…';
+        else if (phase?.phase === 'error') status.textContent = phase.message;
+        else if (file) {
+            const time = new Date(file.exportedAt).toLocaleString();
+            status.textContent = file.count
+                ? `已保存 ${file.count} 个 Cookie · ${time} · ${file.filename}`
+                : `已保存空快照 · ${time} · ${file.filename}。当前 Chrome 配置没有这个网站的 Cookie。`;
+        } else status.textContent = '尚未导出这个网站。';
+        document.getElementById('cookie-export-show-file').disabled = !file;
+        autoList.replaceChildren();
+        for (const site of state.cookieExportAutoSites) {
+            const row = document.createElement('div');
+            row.className = 'list-item';
+            const name = document.createElement('span');
+            name.textContent = site;
+            const stop = document.createElement('button');
+            stop.type = 'button';
+            stop.className = 'btn-del';
+            stop.textContent = '停止自动更新';
+            stop.addEventListener('click', () => {
+                request({ type: 'COOKIE_EXPORT_SET_AUTO', domain: site, enabled: false })
+                    .then(result => { state = result.state; render(); }).catch(reportError);
+            });
+            row.append(name, stop);
+            autoList.appendChild(row);
+        }
+        autoList.hidden = state.cookieExportAutoSites.length === 0;
+    }
+
+    async function exportNow() {
+        nowButton.disabled = quickButton.disabled = true;
+        try {
+            const result = await request({ type: 'COOKIE_EXPORT_NOW', domain: domainFromInput() });
+            state = result.state;
+            render();
+            showStatus(result.file.count ? `已导出 ${result.file.count} 个 Cookie` : '已保存空快照，当前站点没有 Cookie');
+        } catch (error) { reportError(error); }
+        finally { nowButton.disabled = quickButton.disabled = false; }
+    }
+
+    async function exportCurrentSite() {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!tab?.url || !/^https?:\/\//i.test(tab.url)) {
+                throw new Error('请在网站页面点击扩展导出；也可以在下方输入域名');
+            }
+            input.value = new URL(tab.url).hostname;
+            await exportNow();
+        } catch (error) { reportError(error); }
+    }
+
+    nowButton.addEventListener('click', exportNow);
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') exportNow();
+    });
+    quickButton.addEventListener('click', event => { event.stopPropagation(); exportCurrentSite(); });
+    toggle.addEventListener('change', async () => {
+        try {
+            const result = await request({ type: 'COOKIE_EXPORT_SET_AUTO', domain: domainFromInput(), enabled: toggle.checked });
+            state = result.state;
+            render();
+        } catch (error) { render(); reportError(error); }
+    });
+    document.getElementById('cookie-export-show-file').addEventListener('click', () => {
+        try { request({ type: 'COOKIE_EXPORT_SHOW_FILE', domain: domainFromInput() }).catch(reportError); }
+        catch (error) { reportError(error); }
+    });
+    document.getElementById('cookie-export-open-folder').addEventListener('click', () => {
+        request({ type: 'COOKIE_EXPORT_OPEN_FOLDER' }).catch(reportError);
+    });
+    if (!isPopup) {
+        document.getElementById('cookie-mcp-connect').addEventListener('click', event => {
+            event.stopPropagation();
+            request({ type: 'COOKIE_MCP_CONNECT' }).catch(reportError);
+        });
+    }
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local') return;
+        if (Object.keys(changes).some(key => key.startsWith('cookieExport'))) {
+            request({ type: 'COOKIE_EXPORT_GET_STATE' }).then(result => { state = result.state; render(); }).catch(reportError);
+        }
+        if (!isPopup && (changes.cookieMcpBridgeConnected || changes.cookieMcpBridgeError)) {
+            chrome.storage.local.get({ cookieMcpBridgeConnected: false, cookieMcpBridgeError: '' }, items => renderBridge(items.cookieMcpBridgeConnected, items.cookieMcpBridgeError));
+        }
+    });
+    function renderBridge(connected, error = '') {
+        const text = connected
+            ? 'MCP 桥接已连接，可以让 AI 导出到临时目录。'
+            : `MCP 桥接未连接${error ? `：${error}` : '：首次使用请运行 mcp/cookie-export/install.ps1，再点击连接。'}`;
+        document.getElementById('cookie-mcp-status').textContent = text;
+    }
+    request({ type: 'COOKIE_EXPORT_GET_STATE' }).then(async result => {
+        state = result.state;
+        input.value = state.cookieExportLastDomain;
+        if (isPopup) {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab?.url && /^https?:\/\//i.test(tab.url)) input.value = new URL(tab.url).hostname;
+        }
+        render();
+    }).catch(reportError);
+    if (!isPopup) {
+        chrome.storage.local.get({ cookieMcpBridgeConnected: false, cookieMcpBridgeError: '' }, items => renderBridge(items.cookieMcpBridgeConnected, items.cookieMcpBridgeError));
+    }
+    registerPopupCardAction('module-cookie-export', exportCurrentSite);
+}
+
 // --- 功能显示管理模块逻辑 ---
 function initSettingsModule() {
     const defaultVisibility = { speed: true, proxy: true, copy: true, dark: true, csdn: true };
@@ -536,6 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDarkModeModule();
     initCsdnModule();
     initShortcutModule();
+    initCookieExportModule();
     initSettingsModule();
     initPopupCardActions();
 
