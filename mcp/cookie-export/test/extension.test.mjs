@@ -203,8 +203,75 @@ test('local bridge authenticates, reports disconnection and rejects website cont
     const listener = [...messages.listeners][0];
     listener({ type: 'COOKIE_MCP_CONNECT' }, { id: 'unit', url: 'https://example.com', tab: { id: 1 } }, () => {});
     assert.equal(instances.length, 1);
+    const phases = [];
+    let settled = false;
+    const exportRequest = context.YukonCookieNativeBridge.articleExport({ jobId: 'test-job' }, phase => phases.push(phase)).then(result => { settled = true; return result; });
+    await until(() => instances[0].sent.some(message => message.type === 'ARTICLE_TEMP_EXPORT'));
+    const exportId = instances[0].sent.find(message => message.type === 'ARTICLE_TEMP_EXPORT').id;
+    const update = message => instances[0].onmessage({ data: JSON.stringify(message) });
+    update({ type: 'ARTICLE_TEMP_PROGRESS', id: 'unrelated', phase: 'exporting' });
+    update({ type: 'ARTICLE_TEMP_PROGRESS', id: exportId, phase: 'unknown' });
+    update({ type: 'ARTICLE_TEMP_PROGRESS', id: exportId, phase: 'exporting' });
+    assert.deepEqual(phases, ['exporting']);
+    assert.equal(settled, false);
+    update({ type: 'COOKIE_MCP_RESULT', id: exportId, ok: true, result: { name: 'document.md', size: 5 } });
+    assert.equal((await exportRequest).size, 5);
+    update({ type: 'ARTICLE_TEMP_PROGRESS', id: exportId, phase: 'ready' });
+    assert.deepEqual(phases, ['exporting']);
     instances[0].close();
     assert.equal(storage.cookieMcpBridgeConnected, false);
     assert.ok(storage.cookieMcpBridgeError.includes('未连接'));
+    assert.ok(!JSON.stringify(storage).includes('a'.repeat(64)));
+});
+
+test('settings restart authenticates once, reconnects and rejects webpage requests', async () => {
+    const messages = event();
+    const storage = {};
+    const sockets = [];
+    const timers = new Map();
+    let port = 12345;
+    let restarts = 0;
+    class FakeSocket {
+        static OPEN = 1;
+        constructor(url) {
+            this.url = url; this.readyState = 0; this.closed = [];
+            sockets.push(this);
+            queueMicrotask(() => { this.readyState = 1; this.onopen?.(); });
+        }
+        send(text) {
+            if (JSON.parse(text).type === 'COOKIE_MCP_HELLO') queueMicrotask(() => this.onmessage({ data: '{"type":"COOKIE_MCP_READY"}' }));
+        }
+        addEventListener(type, callback) { if (type === 'close') this.closed.push(callback); }
+        close() { this.readyState = 3; this.onclose?.({ code: 1006 }); for (const callback of this.closed) callback(); }
+    }
+    const chrome = {
+        extension: { inIncognitoContext: false },
+        storage: { local: { set: async values => Object.assign(storage, values) } },
+        runtime: { id: 'unit', getURL: value => `chrome-extension://unit/${value}`, onMessage: messages }
+    };
+    const context = vm.createContext({ chrome, WebSocket: FakeSocket, crypto: webcrypto, AbortSignal,
+        fetch: async (url, options) => {
+            if (url.startsWith('chrome-extension:')) return { json: async () => ({ port, control_port: 43210, token: 'a'.repeat(64) }) };
+            assert.equal(url, 'http://127.0.0.1:43210/restart');
+            assert.equal(options.method, 'POST');
+            assert.equal(options.headers.Authorization, 'Bearer ' + 'a'.repeat(64));
+            restarts++; port = 54321;
+            return { ok: true, json: async () => ({ ok: true, pid: 123, port }) };
+        },
+        setTimeout: fn => { const id = {}; timers.set(id, fn); return id; }, clearTimeout: id => timers.delete(id)
+    });
+    vm.runInContext(await readFile(new URL('../../../cookie-local-bridge.js', import.meta.url), 'utf8'), context);
+    await until(() => storage.cookieMcpBridgeConnected);
+    const listener = [...messages.listeners][0];
+    assert.equal(listener({ type: 'COOKIE_MCP_RESTART' }, { id: 'unit', url: 'https://example.com' }, () => {}), false);
+    assert.equal(restarts, 0);
+    const request = () => new Promise(resolve => listener({ type: 'COOKIE_MCP_RESTART' }, { id: 'unit', url: chrome.runtime.getURL('options.html') }, resolve));
+    const responses = await Promise.all([request(), context.YukonCookieNativeBridge.restartService().then(() => ({ ok: true })), request()]);
+    assert.ok(responses.every(response => response.ok));
+    assert.equal(restarts, 1);
+    assert.equal(sockets.length, 2);
+    assert.equal(sockets[1].url, 'ws://127.0.0.1:54321');
+    assert.equal(storage.cookieMcpBridgeConnected, true);
+    assert.equal(storage.cookieMcpBridgeRestarting, false);
     assert.ok(!JSON.stringify(storage).includes('a'.repeat(64)));
 });

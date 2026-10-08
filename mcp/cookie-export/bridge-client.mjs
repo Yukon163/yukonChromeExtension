@@ -7,7 +7,7 @@ export function bridgeHome() {
     return process.env.YUKON_COOKIE_BRIDGE_HOME || path.join(process.env.LOCALAPPDATA || os.homedir(), 'YukonChromeCookieExport');
 }
 
-export async function requestBridge(connection, payload) {
+export async function requestBridge(connection, payload, { timeoutMs = 20000 } = {}) {
     if (typeof connection.token !== 'string' || !/^[a-f0-9]{64}$/.test(connection.token) ||
         typeof connection.pipe !== 'string' || !connection.pipe.startsWith('\\\\.\\pipe\\yukon-cookie-export-')) {
         throw new Error('本机桥接配置无效，请重新运行 install.ps1');
@@ -16,8 +16,8 @@ export async function requestBridge(connection, payload) {
         let buffer = '';
         const socket = net.createConnection(connection.pipe);
         socket.setEncoding('utf8');
-        const fail = () => { socket.destroy(); reject(new Error('Chrome 桥接未连接，请打开 Chrome 并在扩展弹窗中点击连接本机桥接')); };
-        socket.setTimeout(20000, fail);
+        const fail = () => { socket.destroy(); reject(new Error('Chrome 桥接未连接，请打开 Chrome 并在扩展的更多设置 → Cookie 导出中重试连接')); };
+        socket.setTimeout(timeoutMs, fail);
         socket.once('error', fail);
         socket.once('connect', () => socket.write(JSON.stringify({ token: connection.token, ...payload }) + '\n'));
         socket.on('data', chunk => {

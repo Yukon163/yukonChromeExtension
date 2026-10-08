@@ -14,5 +14,8 @@
     "@modelcontextprotocol/sdk": "1.32.1",
     "ws": "8.22.0",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
   }
 }

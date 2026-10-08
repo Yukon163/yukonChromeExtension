@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidatePattern('^[a-p]{32}$')][string]$ExtensionId,
     [string]$ChromeUserData = (Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data'),
     [switch]$DiscoverOnly

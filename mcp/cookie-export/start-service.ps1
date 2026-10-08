@@ -1,5 +1,6 @@
-$ErrorActionPreference = 'Stop'
-$bridgeRoot = Join-Path $env:LOCALAPPDATA 'YukonChromeCookieExport'
+﻿$ErrorActionPreference = 'Stop'
+$bridgeRoot = if ($env:YUKON_COOKIE_BRIDGE_HOME) { $env:YUKON_COOKIE_BRIDGE_HOME } else { Join-Path $env:LOCALAPPDATA 'YukonChromeCookieExport' }
+& (Join-Path $PSScriptRoot 'start-control.ps1')
 $daemonPath = Join-Path $PSScriptRoot 'bridge-daemon.mjs'
 $stateFile = Join-Path $bridgeRoot 'daemon-state.json'
 if (Test-Path -LiteralPath $stateFile) {

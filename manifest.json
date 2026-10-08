@@ -1,16 +1,10 @@
 {
   "manifest_version": 3,
   "name": "yukonChromeExtension",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "minimum_chrome_version": "116",
   "description": "Yukon 专属浏览器助手：支持视频倍速控制、代理切换、超级复制与强制暗色模式",
-  "permissions": [
-    "activeTab",
-    "storage",
-    "proxy",
-    "scripting",
-    "cookies"
-  ],
+  "permissions": ["activeTab", "storage", "proxy", "scripting", "cookies"],
   "host_permissions": [
     "<all_urls>",
     "*://*.feishu.cn/*",
@@ -43,38 +37,31 @@
   },
   "content_scripts": [
     {
+      "matches": ["https://juejin.cn/editor/drafts/*"],
+      "js": ["feishu-juejin-button.js"],
+      "run_at": "document_idle"
+    },
+    {
       "matches": [
         "*://*.feishu.cn/*",
         "*://*.larksuite.com/*",
         "*://*.larkoffice.com/*"
       ],
-      "js": [
-        "feishu-shortcuts.js"
-      ],
+      "js": ["feishu-shortcuts.js"],
       "all_frames": true,
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "content.js"
-      ],
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
       "all_frames": true,
       "run_at": "document_idle"
     },
     {
-      "matches": [
-        "*://*.csdn.net/*"
-      ],
-      "js": [
-        "csdn.js"
-      ],
-      "css": [
-        "csdn.css"
-      ],
+      "matches": ["*://*.csdn.net/*"],
+      "js": ["csdn.js"],
+      "css": ["csdn.css"],
       "run_at": "document_start"
     }
   ]

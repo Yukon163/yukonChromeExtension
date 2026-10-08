@@ -603,6 +603,19 @@ function initCookieExportModule() {
         request({ type: 'COOKIE_EXPORT_OPEN_FOLDER' }).catch(reportError);
     });
     if (!isPopup) {
+        const restartButton = document.getElementById('cookie-mcp-restart');
+        restartButton.addEventListener('click', async event => {
+            event.stopPropagation();
+            restartButton.disabled = true;
+            restartButton.textContent = '正在重启…';
+            const bridgeStatus = document.getElementById('cookie-mcp-status');
+            bridgeStatus.textContent = '正在重启本机服务并恢复连接…';
+            try {
+                await request({ type: 'COOKIE_MCP_RESTART' });
+                bridgeStatus.textContent = '本机服务已重启，连接已恢复。';
+            } catch (error) { bridgeStatus.textContent = error.message; }
+            finally { restartButton.disabled = false; restartButton.textContent = '重启本机服务'; }
+        });
         document.getElementById('cookie-mcp-connect').addEventListener('click', event => {
             event.stopPropagation();
             request({ type: 'COOKIE_MCP_CONNECT' }).catch(reportError);
@@ -613,15 +626,16 @@ function initCookieExportModule() {
         if (Object.keys(changes).some(key => key.startsWith('cookieExport'))) {
             request({ type: 'COOKIE_EXPORT_GET_STATE' }).then(result => { state = result.state; render(); }).catch(reportError);
         }
-        if (!isPopup && (changes.cookieMcpBridgeConnected || changes.cookieMcpBridgeError)) {
-            chrome.storage.local.get({ cookieMcpBridgeConnected: false, cookieMcpBridgeError: '' }, items => renderBridge(items.cookieMcpBridgeConnected, items.cookieMcpBridgeError));
+        if (!isPopup && (changes.cookieMcpBridgeConnected || changes.cookieMcpBridgeError || changes.cookieMcpBridgeRestarting || changes.cookieMcpBridgeRestartError)) {
+            chrome.storage.local.get({ cookieMcpBridgeConnected: false, cookieMcpBridgeError: '', cookieMcpBridgeRestarting: false, cookieMcpBridgeRestartError: '' }, items => renderBridge(items.cookieMcpBridgeConnected, items.cookieMcpBridgeError, items.cookieMcpBridgeRestarting, items.cookieMcpBridgeRestartError));
         }
     });
-    function renderBridge(connected, error = '') {
-        const text = connected
+    function renderBridge(connected, error = '', restarting = false, restartError = '') {
+        const text = restarting ? '正在重启本机服务并恢复连接…' : restartError ? `服务重启未完成：${restartError}` : connected
             ? 'MCP 桥接已连接，可以让 AI 导出到临时目录。'
             : `MCP 桥接未连接${error ? `：${error}` : '：首次使用请运行 mcp/cookie-export/install.ps1，再点击连接。'}`;
         document.getElementById('cookie-mcp-status').textContent = text;
+        document.getElementById('cookie-mcp-restart').disabled = restarting;
     }
     request({ type: 'COOKIE_EXPORT_GET_STATE' }).then(async result => {
         state = result.state;
@@ -633,7 +647,7 @@ function initCookieExportModule() {
         render();
     }).catch(reportError);
     if (!isPopup) {
-        chrome.storage.local.get({ cookieMcpBridgeConnected: false, cookieMcpBridgeError: '' }, items => renderBridge(items.cookieMcpBridgeConnected, items.cookieMcpBridgeError));
+        chrome.storage.local.get({ cookieMcpBridgeConnected: false, cookieMcpBridgeError: '', cookieMcpBridgeRestarting: false, cookieMcpBridgeRestartError: '' }, items => renderBridge(items.cookieMcpBridgeConnected, items.cookieMcpBridgeError, items.cookieMcpBridgeRestarting, items.cookieMcpBridgeRestartError));
     }
     registerPopupCardAction('module-cookie-export', exportCurrentSite);
 }

@@ -1,5 +1,6 @@
 importScripts('cookie-export.js');
 importScripts('cookie-local-bridge.js');
+importScripts('article-import-flow.js');
 
 const FEISHU_COPY_SCRIPT_ID = 'yukon-feishu-copy-permission';
 const FEISHU_COPY_SCRIPT = {

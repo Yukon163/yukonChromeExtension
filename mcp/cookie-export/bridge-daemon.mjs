@@ -64,7 +64,9 @@ sockets.on('connection', ws => {
 
 await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
 const port = server.address().port;
-await writeFile(config.extension_config, JSON.stringify({ port, token: config.token }), { mode: 0o600 });
+let connectionConfig = {};
+try { connectionConfig = JSON.parse(await readFile(config.extension_config, 'utf8')); } catch {}
+await writeFile(config.extension_config, JSON.stringify({ ...connectionConfig, port, token: config.token }), { mode: 0o600 });
 await writeFile(statePath, JSON.stringify({ pid: process.pid, port, started_at: new Date().toISOString() }), { mode: 0o600 });
 process.stdout.write('Cookie bridge service ready\n');
 async function close() {
