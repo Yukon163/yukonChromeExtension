@@ -106,9 +106,15 @@
             }
             await chrome.storage.local.set({ cookieMcpBridgeRestarting: true, cookieMcpBridgeError: '', cookieMcpBridgeRestartError: '' });
             try {
-                const response = await fetch(`http://127.0.0.1:${config.control_port}/restart`, {
-                    method: 'POST', headers: { Authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(25000)
-                });
+                let response;
+                try {
+                    response = await fetch(`http://127.0.0.1:${config.control_port}/restart`, {
+                        method: 'POST', headers: { Authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(50000)
+                    });
+                } catch (error) {
+                    if (error.name === 'TimeoutError' || error.name === 'AbortError') throw new Error('重启请求超时，请稍后重试');
+                    throw new Error('无法连接本机重启控制器，请稍后重试；仍失败时请运行 mcp/cookie-export/start-service.ps1');
+                }
                 if (!response.ok) throw new Error('本机服务重启失败，请检查服务控制器');
                 const result = await response.json();
                 if (!result.ok) throw new Error('本机服务重启失败');

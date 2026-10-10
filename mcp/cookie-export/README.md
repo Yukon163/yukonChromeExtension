@@ -13,7 +13,7 @@ npm install --no-audit --no-fund
 .\install.ps1
 ```
 
-安装脚本自动从 Chrome 扩展设置中定位本仓库的扩展 ID，配置当前用户的后台服务并注册 Windows 登录时自动启动。自定义 Chrome 数据目录或无法定位 ID 时可显式传入：
+安装脚本自动从 Chrome 扩展设置中定位本仓库的扩展 ID，配置当前用户的后台服务，并注册 `YukonChromeCookieExport` Windows 计划任务：登录后延迟 15 秒静默启动一次，不进行周期检查，也不在服务退出后自动恢复。任务通过无控制台的 Windows Script Host 启动入口，在 PowerShell 创建时即隐藏窗口，避免终端闪现；后台错误写入日志，退出码传回计划任务。任务允许在电池供电时运行，睡眠期间不唤醒电脑。自定义 Chrome 数据目录或无法定位 ID 时可显式传入：
 
 ```powershell
 .\install.ps1 -ExtensionId '此扩展的32位ID'
@@ -21,9 +21,11 @@ npm install --no-audit --no-fund
 .\install.ps1 -ChromeUserData 'D:\ChromeProfile'
 ```
 
-到 `chrome://extensions` 重新加载扩展，新版会自动连接本机服务。“更多设置 → Cookie 导出”中显示连接状态，也可点击“连接 MCP 桥接”立即重试。弹窗只保留当前网站的 Cookie 导出入口。Chrome 需要保持运行。服务在登录 Windows 时自动启动，连接断开后扩展会自动重试。手动启动服务可运行 `start-service.ps1`。
+到 `chrome://extensions` 重新加载扩展，新版会自动连接本机服务。“更多设置 → Cookie 导出”中显示连接状态，也可点击“连接 MCP 桥接”立即重试。弹窗只保留当前网站的 Cookie 导出入口。Chrome 需要保持运行。连接断开后扩展会自动重试。手动启动服务可运行 `start-service.ps1`。
 
-更新后台代码后，可直接在“更多设置 → Cookie 导出”点击“重启本机服务”。按钮会重启配套 Node 后台并等待扩展重新连接，重启状态和错误只显示在设置页。控制器只监听本机、校验来源和令牌，并在终止进程前核对服务脚本路径；Cookie 导出文件不会因重启删除。现有安装只需运行一次 `start-service.ps1` 启动新增的控制器，以后登录 Windows 时一并自动启动。
+旧安装修复登录启动或取消旧版每分钟检查，只需运行一次 `install-autostart.ps1`，无需重新配置扩展 ID 或令牌。脚本仅注册登录启动，不会立即执行任务。它会保存 Node.js 的绝对路径，并解析实际服务目录后显式传给计划任务，兼容 MSIX 应用对 AppData 的文件重定向，避免登录环境的 PATH 或目录差异影响启动；计划任务注册成功后移除旧的注册表登录启动项。若更换 Node.js 安装位置，请重新运行该脚本。启动及失败记录保存在服务目录的 `service-start.log`（普通安装位于 `%LOCALAPPDATA%\YukonChromeCookieExport`，MSIX 环境可能位于应用的 `LocalCache\Local`），日志不记录令牌或 Cookie，达到 1 MiB 后轮换。移动或删除仓库、卸载 Node.js、禁用计划任务时仍会影响启动。
+
+更新后台代码后，可直接在“更多设置 → Cookie 导出”点击“重启本机服务”。按钮会重启配套 Node 后台并等待扩展重新连接，重启状态和错误只显示在设置页。控制器只监听本机、校验来源和令牌，并在终止进程前核对服务脚本路径；Cookie 导出文件不会因重启删除。登录启动和手动重启使用同一个锁，避免同时启动重复进程。若服务和控制器都已退出，请手动运行 `start-service.ps1`。
 
 飞书文章导入会在开始时检查后台功能版本，发现旧版便自动调用同一控制器重启、等待重新连接并继续导入；页面显示更新进度，无需用户跳转设置页手动重启。并发的重启请求会合并为一次。
 

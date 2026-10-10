@@ -231,6 +231,7 @@ test('settings restart authenticates once, reconnects and rejects webpage reques
     const timers = new Map();
     let port = 12345;
     let restarts = 0;
+    let failRestart = false;
     class FakeSocket {
         static OPEN = 1;
         constructor(url) {
@@ -255,6 +256,7 @@ test('settings restart authenticates once, reconnects and rejects webpage reques
             assert.equal(url, 'http://127.0.0.1:43210/restart');
             assert.equal(options.method, 'POST');
             assert.equal(options.headers.Authorization, 'Bearer ' + 'a'.repeat(64));
+            if (failRestart) throw new TypeError('Failed to fetch');
             restarts++; port = 54321;
             return { ok: true, json: async () => ({ ok: true, pid: 123, port }) };
         },
@@ -274,4 +276,14 @@ test('settings restart authenticates once, reconnects and rejects webpage reques
     assert.equal(storage.cookieMcpBridgeConnected, true);
     assert.equal(storage.cookieMcpBridgeRestarting, false);
     assert.ok(!JSON.stringify(storage).includes('a'.repeat(64)));
+    failRestart = true;
+    const failed = await request();
+    assert.equal(failed.ok, false);
+    assert.ok(failed.error.includes('无法连接本机重启控制器'));
+    assert.ok(failed.error.includes('start-service.ps1'));
+    assert.equal(storage.cookieMcpBridgeRestarting, false);
+    assert.equal(storage.cookieMcpBridgeRestartError, failed.error);
+    failRestart = false;
+    assert.equal((await request()).ok, true);
+    assert.equal(storage.cookieMcpBridgeRestartError, '');
 });

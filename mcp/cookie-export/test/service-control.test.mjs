@@ -86,3 +86,133 @@ test('authenticated settings restart changes only the owned service and preserve
     assert.equal(refused.status, 500);
     assert.equal(unrelated.exitCode, null);
 });
+
+test('manual startup uses the saved directory and Node path and serializes concurrent launches', { timeout: 60000 }, async t => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'yukon-service-control-test-'));
+    const home = path.join(root, 'bridge');
+    await mkdir(home);
+    const connectionFile = path.join(root, 'cookie-bridge-config.json');
+    const configFile = path.join(home, 'service-config.json');
+    const daemonFile = path.join(home, 'daemon-state.json');
+    const controlFile = path.join(home, 'service-control-state.json');
+    const config = { token, allowed_origins: [origin], extension_config: connectionFile, node_path: process.execPath, bridge_home: home };
+    await writeFile(configFile, JSON.stringify(config));
+    const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const wscript = path.join(process.env.SystemRoot, 'System32', 'wscript.exe');
+    const env = { ...process.env, YUKON_COOKIE_BRIDGE_HOME: home, PATH: path.join(process.env.SystemRoot, 'System32'), TEMP: root, TMP: root };
+    const managed = new Set();
+    const launch = () => run(wscript, ['//B', '//Nologo', '//E:JScript', path.join(packageRoot, 'start-silent.js'), powershell, home], {
+        env: { ...env, YUKON_COOKIE_BRIDGE_HOME: path.join(root, 'wrong-home') }, windowsHide: true, timeout: 25000
+    });
+    // The installing app may read an AppData alias while a scheduled task sees the
+    // actual directory; all child processes must use the saved physical home.
+    const aliasedAppData = path.join(root, 'aliased-appdata');
+    const aliasHome = path.join(aliasedAppData, 'YukonChromeCookieExport');
+    await mkdir(aliasHome, { recursive: true });
+    await writeFile(path.join(aliasHome, 'service-config.json'), JSON.stringify(config));
+    const launchFromAlias = () => run(powershell, ['-NoProfile', '-File', path.join(packageRoot, 'check-service.ps1')], {
+        env: { ...env, LOCALAPPDATA: aliasedAppData, YUKON_COOKIE_BRIDGE_HOME: '' }, windowsHide: true, timeout: 25000
+    });
+    const states = async () => {
+        const daemon = await readReady(daemonFile);
+        const control = await readReady(controlFile);
+        managed.add(daemon.pid); managed.add(control.pid);
+        return { daemon, control };
+    };
+    t.after(async () => {
+        // Capture startup PIDs even if a launch assertion failed partway through.
+        for (const file of [daemonFile, controlFile]) {
+            try { managed.add(JSON.parse(await readFile(file, 'utf8')).pid); } catch {}
+        }
+        for (const pid of managed) { try { process.kill(pid); } catch {} }
+        const resolved = path.resolve(root);
+        assert.ok(resolved.startsWith(path.resolve(os.tmpdir()) + path.sep));
+        assert.ok(path.basename(resolved).startsWith('yukon-service-control-test-'));
+        await rm(resolved, { recursive: true, force: true });
+    });
+    await Promise.all([launch(), launch()]);
+    const first = await states();
+    await Promise.all([launchFromAlias(), launch()]);
+    assert.deepEqual(await states(), first);
+    const firstLog = await readFile(path.join(home, 'service-start.log'), 'utf8');
+    assert.equal(firstLog.split('\n').filter(line => line.includes(' started pid=')).length, 2);
+    process.kill(first.daemon.pid); process.kill(first.control.pid);
+    managed.delete(first.daemon.pid); managed.delete(first.control.pid);
+    await Promise.all([launchFromAlias(), launch()]);
+    const recovered = await states();
+    assert.notEqual(recovered.daemon.pid, first.daemon.pid);
+    assert.notEqual(recovered.control.pid, first.control.pid);
+    const connection = JSON.parse(await readFile(connectionFile, 'utf8'));
+    assert.equal(connection.port, recovered.daemon.port);
+    assert.equal(connection.control_port, recovered.control.port);
+    const ready = await fetch(`http://127.0.0.1:${recovered.control.port}/restart`, { method: 'OPTIONS', headers: { Origin: origin.slice(0, -1) } });
+    assert.equal(ready.status, 204);
+    const log = await readFile(path.join(home, 'service-start.log'), 'utf8');
+    assert.equal(log.split('\n').filter(line => line.includes(' started pid=')).length, 4);
+    assert.ok(!log.includes(token));
+
+    // A missing pinned runtime must produce a useful, secret-free failure log.
+    process.kill(recovered.daemon.pid); process.kill(recovered.control.pid);
+    managed.delete(recovered.daemon.pid); managed.delete(recovered.control.pid);
+    await writeFile(configFile, JSON.stringify({ ...config, node_path: path.join(root, 'missing-node.exe') }));
+    await assert.rejects(launch());
+    const failedLog = await readFile(path.join(home, 'service-start.log'), 'utf8');
+    assert.ok(failedLog.includes('startup failed'));
+    assert.ok(failedLog.includes('Configured Node executable is missing'));
+    assert.ok(!failedLog.includes(token));
+});
+
+test('silent startup creates PowerShell hidden and returns its failure code with Unicode paths', { timeout: 30000 }, async t => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'yukon-service-control-test-silent 中文 '));
+    t.after(async () => {
+        const resolved = path.resolve(root);
+        assert.ok(resolved.startsWith(path.resolve(os.tmpdir()) + path.sep));
+        assert.ok(path.basename(resolved).startsWith('yukon-service-control-test-'));
+        await rm(resolved, { recursive: true, force: true });
+    });
+    await writeFile(path.join(root, 'start-silent.js'), await readFile(path.join(packageRoot, 'start-silent.js')));
+    await writeFile(path.join(root, 'check-service.ps1'), `\uFEFFparam([string]$BridgeHome)
+$ErrorActionPreference = 'Stop'
+try {
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class StartupWindowProbe {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct StartupInfo {
+        public uint cb;
+        public IntPtr reserved, desktop, title;
+        public uint x, y, width, height, charsX, charsY, fill, flags;
+        public ushort showWindow, reservedSize;
+        public IntPtr reservedBytes, stdin, stdout, stderr;
+    }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern void GetStartupInfo(out StartupInfo info);
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr window);
+}
+'@
+$info = New-Object StartupWindowProbe+StartupInfo
+[StartupWindowProbe]::GetStartupInfo([ref]$info)
+$record = @{initialHidden = (($info.flags -band 1) -ne 0 -and $info.showWindow -eq 0); consoleVisible = [StartupWindowProbe]::IsWindowVisible([StartupWindowProbe]::GetConsoleWindow())}
+[IO.File]::WriteAllText((Join-Path $BridgeHome 'window-state.json'), ($record | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+exit 7
+} catch {
+    [IO.File]::WriteAllText((Join-Path $BridgeHome 'probe-error.txt'), $_.Exception.Message)
+    exit 8
+}
+`);
+    const wscript = path.join(process.env.SystemRoot, 'System32', 'wscript.exe');
+    const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    let failure;
+    try {
+        await run(wscript, ['//B', '//Nologo', '//E:JScript', path.join(root, 'start-silent.js'), powershell, root], { windowsHide: true, timeout: 25000 });
+    } catch (error) { failure = error; }
+    const probeError = await readFile(path.join(root, 'probe-error.txt'), 'utf8').catch(() => '');
+    assert.equal(failure?.code, 7, probeError || JSON.stringify({ code: failure?.code, killed: failure?.killed, signal: failure?.signal }));
+    const state = JSON.parse(await readFile(path.join(root, 'window-state.json'), 'utf8'));
+    assert.equal(state.initialHidden, true);
+    assert.equal(state.consoleVisible, false);
+});

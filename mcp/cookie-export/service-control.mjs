@@ -27,7 +27,7 @@ async function restart() {
     restarting = (async () => {
         const script = fileURLToPath(new URL('./restart-service.ps1', import.meta.url));
         await run('powershell.exe', ['-NoProfile', '-File', script], {
-            windowsHide: true, timeout: 20000, env: process.env
+            windowsHide: true, timeout: 45000, env: process.env
         });
         const state = JSON.parse(await readFile(path.join(home, 'daemon-state.json'), 'utf8'));
         return { pid: state.pid, port: state.port, started_at: state.started_at };
@@ -55,7 +55,7 @@ const server = http.createServer(async (request, response) => {
         response.end(JSON.stringify({ ok: false, error: '服务重启失败，请检查本机服务目录和进程状态' }));
     }
 });
-server.requestTimeout = 25000;
+server.requestTimeout = 55000;
 await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
 const port = server.address().port;
 await writeFile(statePath, JSON.stringify({ pid: process.pid, port }), { mode: 0o600 });

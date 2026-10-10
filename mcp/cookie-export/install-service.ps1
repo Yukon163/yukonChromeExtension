@@ -51,12 +51,7 @@ if (-not (Test-Path -LiteralPath $extensionConfig)) { [IO.File]::WriteAllText($e
 & icacls.exe $extensionConfig /inheritance:r /grant:r "*$($currentUser.Value):F" '*S-1-5-18:F' /q | Out-Null
 if ($LASTEXITCODE -ne 0) { throw '无法保护扩展的本机连接令牌' }
 $startPath = Join-Path $PSScriptRoot 'start-service.ps1'
-$powerShellPath = (Get-Command powershell.exe -ErrorAction Stop).Source
-$runKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
-try {
-    $command = '"' + $powerShellPath + '" -NoProfile -WindowStyle Hidden -File "' + $startPath + '"'
-    $runKey.SetValue('YukonChromeCookieExport', $command, [Microsoft.Win32.RegistryValueKind]::String)
-} finally { $runKey.Close() }
+& (Join-Path $PSScriptRoot 'install-autostart.ps1')
 
 # 清理本安装器此前写入的宿主注册项，不触碰其他 Native Messaging 应用。
 $legacySubkey = 'Software\Google\Chrome\NativeMessagingHosts\cn.yukon.chrome_cookie_export'
